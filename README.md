@@ -1,24 +1,24 @@
-# Document Quality Checker
+# 📄 Document Quality Checker
 
 This script fetches and analyzes documents from a Paperless server, tagging them as low quality if they fail a quality check using Ollama. It supports parallel processing for efficiency and allows users to specify tags to ignore during the analysis.
 
-## Features
+## ✨ Features
 
-- Fetch documents from a Paperless server based on a search query.
-- Analyze document content using Ollama for quality assessment.
-- Tag documents as low quality if they fail the quality check.
-- User-configurable server URLs for Paperless and Ollama.
-- Option to ignore documents based on user-selected tags.
-- Parallel processing for faster document analysis.
+- 📥 Fetch documents from a Paperless server based on a search query.
+- 🔍 Analyze document content using Ollama for quality assessment.
+- 🏷️ Tag documents as low quality if they fail the quality check.
+- ⚙️ User-configurable server URLs for Paperless and Ollama.
+- 🚫 Option to ignore documents based on user-selected tags.
+- ⚡ Parallel processing for faster document analysis.
 
-## Requirements
+## 🛠️ Requirements
 
 - Python 3.x
 - `requests` library
 - `tqdm` library
 - `concurrent.futures` (part of the Python standard library)
 
-## Installation
+## 📦 Installation
 
 1. Clone the repository:
     ```sh
@@ -31,7 +31,7 @@ This script fetches and analyzes documents from a Paperless server, tagging them
     pip install requests tqdm
     ```
 
-## Configuration
+## ⚙️ Configuration
 
 Edit the configuration variables in the script to match your environment:
 
@@ -41,7 +41,7 @@ Edit the configuration variables in the script to match your environment:
 - `SEARCH_QUERY`: The search query to filter documents.
 - `OLLAMA_URL`: The URL of your Ollama server.
 
-## Usage
+## 🚀 Usage
 
 1. Run the script:
     ```sh
@@ -52,16 +52,26 @@ Edit the configuration variables in the script to match your environment:
    - Tagging documents as low quality.
    - Ignoring documents based on tags.
 
-## Example
+## 📝 Example
 
 ```python
-# Konfiguration
+# Configuration
 API_URL = 'http://yourpaperlessserver:port/api'
 API_TOKEN = 'YOURPAPERLESSAPITOKEN'
-LIMIT = 20  # Limit der Dokumente pro Anfrage
-SEARCH_QUERY = 'Entgelt'  # Suchanfrage
-OLLAMA_URL = 'http://yourollamaserver:port/validate'  # Ollama-Server-URL
+LIMIT = 20  # Limit of documents per request
+SEARCH_QUERY = 'Entgelt'  # Search query
+OLLAMA_URL = 'http://yourollamaserver:port/validate'  # Ollama server URL
 
 # Run the script
 if __name__ == '__main__':
     main()
+
+📜 License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
+🤝 Contributing
+
+Contributions are welcome! Please fork the repository and submit a pull request with your changes.
+📬 Contact
+
+If you have any questions or suggestions, feel free to open an issue or contact the repository owner.
