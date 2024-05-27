@@ -20,28 +20,6 @@ HIGH_QUALITY_TAG_ID = 24  # Replace with the actual tag ID for high quality
 MODEL_NAME = 'llama3'  # Replace with the actual model name to be used
 MAX_DOCUMENTS = 5  # Set the maximum number of documents to process
 
-def fetch_documents_with_content(api_url, api_token, max_documents):import requests
-from datetime import datetime
-from tqdm import tqdm
-import json
-
-# Configuration
-API_URL = 'http://192.168.2.10:8777/api'
-API_TOKEN = 'caec53cde0388b350e9c837c17ed4c5dab28d82f'
-OLLAMA_URL = 'http://192.168.2.10:11434'
-OLLAMA_ENDPOINT = '/api/generate'
-PROMPT_DEFINITION = """
-Please review the following document content and determine if it is of low quality or high quality.
-Low quality means the content contains many meaningless or unrelated words or sentences.
-High quality means the content is clear, organized, and meaningful.
-Respond strictly with "low quality" or "high quality".
-Content:
-"""
-LOW_QUALITY_TAG_ID = 23  # Replace with the actual tag ID for low quality
-HIGH_QUALITY_TAG_ID = 24  # Replace with the actual tag ID for high quality
-MODEL_NAME = 'llama3'  # Replace with the actual model name to be used
-MAX_DOCUMENTS = 5  # Set the maximum number of documents to process
-
 def fetch_documents_with_content(api_url, api_token, max_documents):
     headers = {'Authorization': f'Token {api_token}'}
     params = {'page_size': 100}
