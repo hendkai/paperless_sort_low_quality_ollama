@@ -5,7 +5,7 @@ import json
 
 # Configuration
 API_URL = 'http://paperlessngx:8777/api'
-API_TOKEN = 'YOURAPITOKEN
+API_TOKEN = 'YOURAPITOKEN'
 OLLAMA_URL = 'http://localhost:11434'
 OLLAMA_ENDPOINT = '/api/generate'
 PROMPT_DEFINITION = """
