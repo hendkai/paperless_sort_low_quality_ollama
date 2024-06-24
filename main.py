@@ -31,10 +31,10 @@ def fetch_documents_with_content(api_url, api_token, max_documents):
         response.raise_for_status()
         data = response.json()
         new_docs = data.get('results', [])
-        documents.extend([doc for doc in new_docs if doc.get('content').strip()])
+        documents.extend([doc for doc in new_docs if doc.get('content', '').strip()])
         total_collected += len(new_docs)
 
-        if total_collected >= max_documents or not data['next']:
+        if total_collected >= max_documents or not data.get('next'):
             break
         else:
             next_page = data['next'].split('page=')[1].split('&')[0]
@@ -46,7 +46,6 @@ def get_csrf_token(session, api_url, api_token):
     headers = {'Authorization': f'Token {api_token}'}
     response = session.get(api_url, headers=headers)
     response.raise_for_status()
-    # Extract CSRF token from cookies
     csrf_token = response.cookies.get('csrftoken')
     print(f"CSRF Token: {csrf_token}")
     return csrf_token
@@ -57,7 +56,6 @@ def send_to_ollama(content, ollama_url, endpoint, prompt, model):
     try:
         response = requests.post(url, json=payload)
         response.raise_for_status()
-        # Manually parse the response to handle multiple JSON objects
         responses = response.text.strip().split("\n")
         full_response = ""
         for res in responses:
@@ -68,7 +66,6 @@ def send_to_ollama(content, ollama_url, endpoint, prompt, model):
             except json.JSONDecodeError as e:
                 print(f"Error decoding JSON object: {e}")
                 print(f"Response text: {res}")
-        # Extract only "high quality" or "low quality" from the full response
         if "high quality" in full_response.lower():
             return "high quality"
         elif "low quality" in full_response.lower():
@@ -86,12 +83,10 @@ def tag_document(document_id, api_url, api_token, tag_id, csrf_token):
         'Content-Type': 'application/json'
     }
     url = f'{api_url}/documents/{document_id}/'
-    # Fetch existing tags
     response = requests.get(url, headers=headers)
     response.raise_for_status()
     existing_tags = response.json().get('tags', [])
     
-    # Add new tag if it doesn't exist
     if tag_id not in existing_tags:
         payload = {"tags": existing_tags + [tag_id]}
         response = requests.patch(url, json=payload, headers=headers)
@@ -106,7 +101,7 @@ def process_documents(documents, api_url, api_token, ignore_already_tagged):
     
     for document in tqdm(documents, desc="Processing documents", unit="doc"):
         content = document.get('content', '')
-        if ignore_already_tagged and document['tags']:
+        if ignore_already_tagged and document.get('tags'):
             print(f"Skipping Document ID {document['id']} as it is already tagged.")
             continue
         quality_response = send_to_ollama(content, OLLAMA_URL, OLLAMA_ENDPOINT, PROMPT_DEFINITION, MODEL_NAME)
