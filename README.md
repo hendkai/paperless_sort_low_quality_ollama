@@ -48,7 +48,7 @@ Edit the configuration variables in the script to match your environment:
 
 1. Run the script:
     ```sh
-    python script.py
+    python main.py
     ```
 
 2. Follow the prompts to:
@@ -82,7 +82,7 @@ if __name__ == '__main__':
 
 ## 📜 License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+This project is licensed under the MIT License. See the [LICENSE](https://github.com/hendkai/paperless_sort_low_quality_ollama/blob/main/LICENSE) file for details.
 
 ## 🤝 Contributing
 
