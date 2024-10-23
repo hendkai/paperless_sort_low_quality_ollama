@@ -2,6 +2,9 @@ import requests
 from datetime import datetime
 from tqdm import tqdm
 import json
+import inquirer
+import logging
+import time
 
 # Configuration
 API_URL = 'http://paperlessngx:8777/api'
@@ -19,6 +22,9 @@ LOW_QUALITY_TAG_ID = 23  # Replace with the actual tag ID for low quality
 HIGH_QUALITY_TAG_ID = 24  # Replace with the actual tag ID for high quality
 MODEL_NAME = 'llama3'  # Replace with the actual model name to be used
 MAX_DOCUMENTS = 5  # Set the maximum number of documents to process
+
+# Setup logging
+logging.basicConfig(filename='document_quality_checker.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def fetch_documents_with_content(api_url, api_token, max_documents):
     headers = {'Authorization': f'Token {api_token}'}
@@ -47,7 +53,7 @@ def get_csrf_token(session, api_url, api_token):
     response = session.get(api_url, headers=headers)
     response.raise_for_status()
     csrf_token = response.cookies.get('csrftoken')
-    print(f"CSRF Token: {csrf_token}")
+    logging.info(f"CSRF Token: {csrf_token}")
     return csrf_token
 
 def send_to_ollama(content, ollama_url, endpoint, prompt, model):
@@ -64,8 +70,8 @@ def send_to_ollama(content, ollama_url, endpoint, prompt, model):
                 if 'response' in res_json:
                     full_response += res_json['response']
             except json.JSONDecodeError as e:
-                print(f"Error decoding JSON object: {e}")
-                print(f"Response text: {res}")
+                logging.error(f"Error decoding JSON object: {e}")
+                logging.error(f"Response text: {res}")
         if "high quality" in full_response.lower():
             return "high quality"
         elif "low quality" in full_response.lower():
@@ -73,7 +79,7 @@ def send_to_ollama(content, ollama_url, endpoint, prompt, model):
         else:
             return ''
     except requests.exceptions.RequestException as e:
-        print(f"Error sending request to Ollama: {e}")
+        logging.error(f"Error sending request to Ollama: {e}")
         return ''
 
 def tag_document(document_id, api_url, api_token, tag_id, csrf_token):
@@ -90,10 +96,10 @@ def tag_document(document_id, api_url, api_token, tag_id, csrf_token):
     if tag_id not in existing_tags:
         payload = {"tags": existing_tags + [tag_id]}
         response = requests.patch(url, json=payload, headers=headers)
-        print(f"Tagging Response: {response.status_code} - {response.text}")
+        logging.info(f"Tagging Response: {response.status_code} - {response.text}")
         response.raise_for_status()
     else:
-        print(f"Document {document_id} already has the selected tag.")
+        logging.info(f"Document {document_id} already has the selected tag.")
 
 def process_documents(documents, api_url, api_token, ignore_already_tagged):
     session = requests.Session()
@@ -102,23 +108,33 @@ def process_documents(documents, api_url, api_token, ignore_already_tagged):
     for document in tqdm(documents, desc="Processing documents", unit="doc"):
         content = document.get('content', '')
         if ignore_already_tagged and document.get('tags'):
-            print(f"Skipping Document ID {document['id']} as it is already tagged.")
+            logging.info(f"Skipping Document ID {document['id']} as it is already tagged.")
             continue
         quality_response = send_to_ollama(content, OLLAMA_URL, OLLAMA_ENDPOINT, PROMPT_DEFINITION, MODEL_NAME)
-        print(f"Ollama Response for Document ID {document['id']}: {quality_response}")
+        logging.info(f"Ollama Response for Document ID {document['id']}: {quality_response}")
         
         if quality_response.lower() == 'low quality':
             try:
                 tag_document(document['id'], api_url, api_token, LOW_QUALITY_TAG_ID, csrf_token)
-                print(f"Document ID {document['id']} tagged as low quality.")
+                logging.info(f"Document ID {document['id']} tagged as low quality.")
             except requests.exceptions.HTTPError as e:
-                print(f"Failed to tag document ID {document['id']} as low quality: {e}")
+                logging.error(f"Failed to tag document ID {document['id']} as low quality: {e}")
         elif quality_response.lower() == 'high quality':
             try:
                 tag_document(document['id'], api_url, api_token, HIGH_QUALITY_TAG_ID, csrf_token)
-                print(f"Document ID {document['id']} tagged as high quality.")
+                logging.info(f"Document ID {document['id']} tagged as high quality.")
             except requests.exceptions.HTTPError as e:
-                print(f"Failed to tag document ID {document['id']} as high quality: {e}")
+                logging.error(f"Failed to tag document ID {document['id']} as high quality: {e}")
+
+def generate_summary_report(documents, report_file):
+    with open(report_file, 'w') as file:
+        file.write("Summary Report\n")
+        file.write("====================\n")
+        for document in documents:
+            file.write(f"Document ID: {document['id']}, Title: {document['title']}\n")
+            file.write(f"Tags: {document.get('tags', [])}\n")
+            file.write("--------------------\n")
+    logging.info(f"Summary report saved to {report_file}")
 
 def main():
     print("Searching for documents with content...")
@@ -129,13 +145,21 @@ def main():
         for doc in documents:
             print(f"Document ID: {doc['id']}, Title: {doc['title']}")
 
-        ignore_already_tagged = input("Do you want to ignore already tagged documents? (yes/no): ").lower() == 'yes'
+        questions = [
+            inquirer.List('ignore_tagged',
+                          message="Do you want to ignore already tagged documents?",
+                          choices=['yes', 'no']),
+            inquirer.List('confirm',
+                          message="Do you want to process these documents?",
+                          choices=['yes', 'no'])
+        ]
+        answers = inquirer.prompt(questions)
         
-        confirm = input("Do you want to process these documents? (yes/no): ").lower()
-        
-        if confirm == "yes":
+        if answers['confirm'] == 'yes':
+            ignore_already_tagged = answers['ignore_tagged'] == 'yes'
             process_documents(documents, API_URL, API_TOKEN, ignore_already_tagged)
             print("Processing completed.")
+            generate_summary_report(documents, 'summary_report.txt')
         else:
             print("Processing canceled.")
     else:
