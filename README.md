@@ -10,6 +10,8 @@ This script is designed to fetch and analyze documents from a Paperless server, 
 - ⚙️ **Configurable Settings**: User-configurable server URLs for both Paperless and Ollama, allowing for seamless integration with your environment.
 - 🚫 **Ignore Tagged Documents**: Option to skip documents that have already been tagged, enhancing processing efficiency.
 - ⚡ **Efficient Processing**: Detailed logging ensures efficient processing and easy troubleshooting.
+- 🖥️ **Interactive CLI**: Implemented an interactive command-line interface (CLI) with options and menus for better user interaction.
+- 📊 **Detailed Logging and Reporting**: Detailed logging of actions and events during script execution and a summary report generated at the end of the script.
 
 ## 🛠️ Requirements
 
@@ -18,6 +20,7 @@ To run this script, ensure you have the following prerequisites installed:
 - Python 3.x
 - `requests` library
 - `tqdm` library
+- `inquirer` library
 
 ## 📦 Installation
 
@@ -31,7 +34,7 @@ Follow these steps to set up the Document Quality Checker:
 
 2. **Install Required Libraries**:
     ```sh
-    pip install requests tqdm
+    pip install requests tqdm inquirer
     ```
 
 ## ⚙️ Configuration
@@ -98,6 +101,8 @@ To obtain the API token required for authentication:
 2. **Follow the Prompts**:
    - Choose whether to ignore documents that have already been tagged.
    - Confirm the processing of documents to proceed with the analysis.
+   - Select specific documents to process or skip from a list.
+   - Review the summary of actions to be taken before executing them.
 
 ## 📝 Example
 
@@ -137,4 +142,3 @@ Contributions are welcome! Please fork the repository and submit a pull request 
 ## 📬 Contact
 
 If you have any questions or suggestions, feel free to open an issue or contact the repository owner.
-```
