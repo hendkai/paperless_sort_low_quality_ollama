@@ -7,6 +7,13 @@ from dotenv import load_dotenv
 import logging
 from tenacity import retry, stop_after_attempt, wait_fixed
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
+import sys
+import time
+from colorama import init, Fore, Style
+
+# Initialize Colorama
+init()
 
 # Load environment variables
 load_dotenv()
@@ -31,13 +38,25 @@ Content:
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def show_robot_animation():
+    frames = [
+        f"{Fore.CYAN}🤖 Searching Documents {Fore.GREEN}[{Fore.YELLOW}═══════{Fore.GREEN}] |{Style.RESET_ALL}",
+        f"{Fore.CYAN}🤖 Searching Documents {Fore.GREEN}[{Fore.YELLOW}═══════{Fore.GREEN}] /{Style.RESET_ALL}",
+        f"{Fore.CYAN}🤖 Searching Documents {Fore.GREEN}[{Fore.YELLOW}═══════{Fore.GREEN}] -{Style.RESET_ALL}",
+        f"{Fore.CYAN}🤖 Searching Documents {Fore.GREEN}[{Fore.YELLOW}═══════{Fore.GREEN}] \\{Style.RESET_ALL}"
+    ]
+    for frame in frames:
+        sys.stdout.write('\r' + frame)
+        sys.stdout.flush()
+        time.sleep(0.2)
+
 class OllamaService:
-    def __init__(self, url, endpoint, model):
+    def __init__(self, url: str, endpoint: str, model: str) -> None:
         self.url = url
         self.endpoint = endpoint
         self.model = model
 
-    def evaluate_content(self, content, prompt):
+    def evaluate_content(self, content: str, prompt: str) -> str:
         payload = {"model": self.model, "prompt": f"{prompt}{content}"}
         try:
             response = requests.post(f"{self.url}{self.endpoint}", json=payload)
@@ -63,13 +82,14 @@ class OllamaService:
             return ''
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
-def fetch_documents_with_content(api_url, api_token, max_documents):
+def fetch_documents_with_content(api_url: str, api_token: str, max_documents: int) -> list:
     headers = {'Authorization': f'Token {api_token}'}
     params = {'page_size': 100}
     documents = []
     total_collected = 0
 
     while True:
+        show_robot_animation()
         response = requests.get(f'{api_url}/documents/', headers=headers, params=params)
         response.raise_for_status()
         data = response.json()
@@ -82,9 +102,10 @@ def fetch_documents_with_content(api_url, api_token, max_documents):
         else:
             params['page'] = data['next'].split('page=')[1].split('&')[0]
 
+    sys.stdout.write('\r' + ' ' * 50 + '\r')  # Clear animation
     return documents[:max_documents]
 
-def get_csrf_token(session, api_url, api_token):
+def get_csrf_token(session: requests.Session, api_url: str, api_token: str) -> Optional[str]:
     headers = {'Authorization': f'Token {api_token}'}
     response = session.get(api_url, headers=headers)
     response.raise_for_status()
@@ -95,7 +116,7 @@ def get_csrf_token(session, api_url, api_token):
     return csrf_token
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
-def tag_document(document_id, api_url, api_token, tag_id, csrf_token):
+def tag_document(document_id: int, api_url: str, api_token: str, tag_id: int, csrf_token: str) -> None:
     headers = {
         'Authorization': f'Token {api_token}',
         'X-CSRFToken': csrf_token,
@@ -114,7 +135,7 @@ def tag_document(document_id, api_url, api_token, tag_id, csrf_token):
     else:
         logger.info(f"Document {document_id} already has the selected tag.")
 
-def process_documents(documents, api_url, api_token, ignore_already_tagged):
+def process_documents(documents: list, api_url: str, api_token: str, ignore_already_tagged: bool) -> None:
     session = requests.Session()
     csrf_token = get_csrf_token(session, api_url, api_token)
     ollama_service = OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME)
@@ -124,36 +145,39 @@ def process_documents(documents, api_url, api_token, ignore_already_tagged):
         for document in documents:
             content = document.get('content', '')
             if ignore_already_tagged and document.get('tags'):
-                logger.info(f"Skipping Document ID {document['id']} as it is already tagged.")
+                logger.info(f"Skipping document ID {document['id']} as it is already tagged.")
                 continue
             futures.append(executor.submit(process_single_document, document, content, ollama_service, api_url, api_token, csrf_token))
         
-        for future in tqdm(futures, desc="Processing documents", unit="doc"):
+        for future in tqdm(futures, desc=f"{Fore.CYAN}🤖 Processing Documents{Style.RESET_ALL}", 
+                          unit="doc", bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+                          colour='green'):
             future.result()
 
-def process_single_document(document, content, ollama_service, api_url, api_token, csrf_token):
+def process_single_document(document: dict, content: str, ollama_service: OllamaService, api_url: str, api_token: str, csrf_token: str) -> None:
     quality_response = ollama_service.evaluate_content(content, PROMPT_DEFINITION)
-    logger.info(f"Ollama Response for Document ID {document['id']}: {quality_response}")
+    logger.info(f"Ollama response for document ID {document['id']}: {quality_response}")
 
     if quality_response.lower() == 'low quality':
         try:
             tag_document(document['id'], api_url, api_token, LOW_QUALITY_TAG_ID, csrf_token)
             logger.info(f"Document ID {document['id']} tagged as low quality.")
         except requests.exceptions.HTTPError as e:
-            logger.error(f"Failed to tag document ID {document['id']} as low quality: {e}")
+            logger.error(f"Error tagging document ID {document['id']} as low quality: {e}")
     elif quality_response.lower() == 'high quality':
         try:
             tag_document(document['id'], api_url, api_token, HIGH_QUALITY_TAG_ID, csrf_token)
             logger.info(f"Document ID {document['id']} tagged as high quality.")
         except requests.exceptions.HTTPError as e:
-            logger.error(f"Failed to tag document ID {document['id']} as high quality: {e}")
+            logger.error(f"Error tagging document ID {document['id']} as high quality: {e}")
 
-def main():
+def main() -> None:
+    print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
     logger.info("Searching for documents with content...")
     documents = fetch_documents_with_content(API_URL, API_TOKEN, MAX_DOCUMENTS)
 
     if documents:
-        logger.info(f"Found {len(documents)} documents with content.")
+        logger.info(f"{Fore.CYAN}🤖 {len(documents)} documents with content found.{Style.RESET_ALL}")
         for doc in documents:
             logger.info(f"Document ID: {doc['id']}, Title: {doc['title']}")
 
@@ -161,12 +185,13 @@ def main():
         confirm = os.getenv("CONFIRM_PROCESS", "yes").lower()
 
         if confirm == "yes":
+            print(f"{Fore.CYAN}🤖 Starting processing...{Style.RESET_ALL}")
             process_documents(documents, API_URL, API_TOKEN, ignore_already_tagged)
-            logger.info("Processing completed.")
+            print(f"{Fore.GREEN}🤖 Processing completed!{Style.RESET_ALL}")
         else:
-            logger.info("Processing canceled.")
+            print(f"{Fore.RED}🤖 Processing aborted.{Style.RESET_ALL}")
     else:
-        logger.info("No documents with content found.")
+        print(f"{Fore.YELLOW}🤖 No documents with content found.{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     main()
