@@ -28,7 +28,7 @@ Follow these steps to set up the Document Quality Checker:
 
 1. **Clone the Repository**:
     ```sh
-    git clone https://github.com/yourusername/document-quality-checker.git
+    git clone https://github.com/hendkai/paperless_sort_low_quality_ollama
     cd document-quality-checker
     ```
 
@@ -50,6 +50,8 @@ Before running the script, configure the necessary variables to match your envir
 - `HIGH_QUALITY_TAG_ID`: The tag ID for documents classified as high quality.
 - `MODEL_NAME`: The name of the model to be used with Ollama for analysis.
 - `MAX_DOCUMENTS`: The maximum number of documents to process in a single run.
+- `IGNORE_ALREADY_TAGGED`: Whether to ignore already tagged documents.
+- `CONFIRM_PROCESS`: Whether to require confirmation before processing.
 
 ### Setting Environment Variables
 
@@ -138,8 +140,10 @@ Content:
 """
 LOW_QUALITY_TAG_ID = 1  # Replace with the actual tag ID for low quality
 HIGH_QUALITY_TAG_ID = 2  # Replace with the actual tag ID for high quality
-MODEL_NAME = 'llama3'  # Replace with the actual model name to be used
+MODEL_NAME = 'llama2'  # Replace with the actual model name to be used
 MAX_DOCUMENTS = 5  # Set the maximum number of documents to process
+IGNORE_ALREADY_TAGGED = 'yes'  # Whether to ignore already tagged documents
+CONFIRM_PROCESS = 'yes'  # Whether to require confirmation before processing
 
 # Run the script
 if __name__ == '__main__':
