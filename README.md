@@ -125,29 +125,46 @@ To obtain the API token required for authentication:
 
 Here is an example configuration snippet to help you get started:
 
-```python
-# Configuration
-API_URL = 'http://yourpaperlessserver:port/api'
-API_TOKEN = 'YOURPAPERLESSAPITOKEN'
-OLLAMA_URL = 'http://localhost:11434'
-OLLAMA_ENDPOINT = '/api/generate'
-PROMPT_DEFINITION = """
-Please review the following document content and determine if it is of low quality or high quality.
-Low quality means the content contains many meaningless or unrelated words or sentences.
-High quality means the content is clear, organized, and meaningful.
-Respond strictly with "low quality" or "high quality".
-Content:
-"""
-LOW_QUALITY_TAG_ID = 1  # Replace with the actual tag ID for low quality
-HIGH_QUALITY_TAG_ID = 2  # Replace with the actual tag ID for high quality
-MODEL_NAME = 'llama2'  # Replace with the actual model name to be used
-MAX_DOCUMENTS = 5  # Set the maximum number of documents to process
-IGNORE_ALREADY_TAGGED = 'yes'  # Whether to ignore already tagged documents
-CONFIRM_PROCESS = 'yes'  # Whether to require confirmation before processing
+```
+# Complete URL to your Paperless-ngx API
+# Example: http://192.168.2.10:8000/api
+API_URL=http://your.paperless.instance:8000/api
 
-# Run the script
-if __name__ == '__main__':
-    main()
+# Your Paperless-ngx API Token
+# Can be found in: Paperless web interface -> Settings -> API Token
+API_TOKEN=your_api_token_here
+
+# URL to your Ollama server
+# Default port is 11434
+OLLAMA_URL=http://your.ollama.server:11434
+
+# Endpoint for Ollama API requests
+# Default is /api/generate for text generation
+OLLAMA_ENDPOINT=/api/generate
+
+# Name of the AI model to use
+# Available models can be listed using 'ollama list'
+MODEL_NAME=llama2
+
+# Tag ID for low quality documents in Paperless-ngx
+# Find the ID in Paperless interface under Tags
+LOW_QUALITY_TAG_ID=1
+
+# Tag ID for high quality documents in Paperless-ngx
+# Find the ID in Paperless interface under Tags
+HIGH_QUALITY_TAG_ID=2
+
+# Maximum number of documents to process
+# Set to 0 for unlimited
+MAX_DOCUMENTS=1000
+
+# Whether to ignore already tagged documents
+# Possible values: yes/no
+IGNORE_ALREADY_TAGGED=yes
+
+# Whether to require confirmation before processing
+# Possible values: yes/no
+CONFIRM_PROCESS=yes
 ```
 
 ## 📜 License
