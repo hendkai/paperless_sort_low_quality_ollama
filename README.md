@@ -51,6 +51,21 @@ Before running the script, configure the necessary variables to match your envir
 - `MODEL_NAME`: The name of the model to be used with Ollama for analysis.
 - `MAX_DOCUMENTS`: The maximum number of documents to process in a single run.
 
+### Setting Environment Variables
+
+To set environment variables, follow these steps:
+
+1. **Copy `.env.example` to `.env`**:
+    ```sh
+    cp .env.example .env
+    ```
+
+2. **Update the values in `.env`**:
+    Open the `.env` file in a text editor and update the values to match your environment.
+
+3. **Ensure `.env` is not committed to version control**:
+    Check your `.gitignore` file to ensure that `.env` is listed, preventing it from being committed to version control.
+
 ### Creating and Configuring Tags on Paperless-ngx
 
 Before running the script, ensure that the tags for low and high quality documents are created and configured in your Paperless-ngx instance:
