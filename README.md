@@ -18,9 +18,6 @@ This script is designed to fetch and analyze documents from a Paperless server, 
 To run this script, ensure you have the following prerequisites installed:
 
 - Python 3.x
-- `requests` library
-- `tqdm` library
-- `inquirer` library
 
 ## 📦 Installation
 
@@ -34,7 +31,7 @@ Follow these steps to set up the Document Quality Checker:
 
 2. **Install Required Libraries**:
     ```sh
-    pip install requests tqdm inquirer
+    pip install -r requirements.txt
     ```
 
 ## ⚙️ Configuration
