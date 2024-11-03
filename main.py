@@ -30,6 +30,10 @@ PROMPT_DEFINITION = """
 Please review the following document content and determine if it is of low quality or high quality.
 Low quality means the content contains many meaningless or unrelated words or sentences.
 High quality means the content is clear, organized, and meaningful.
+Step-by-step evaluation process:
+1. Check for basic quality indicators such as grammar and coherence.
+2. Assess the overall organization and meaningfulness of the content.
+3. Make a final quality determination based on the above criteria.
 Respond strictly with "low quality" or "high quality".
 Content:
 """
@@ -80,6 +84,22 @@ class OllamaService:
         except requests.exceptions.RequestException as e:
             logger.error(f"Error sending request to Ollama: {e}")
             return ''
+
+class EnsembleOllamaService:
+    def __init__(self, services: list) -> None:
+        self.services = services
+
+    def evaluate_content(self, content: str, prompt: str) -> str:
+        results = []
+        for service in self.services:
+            result = service.evaluate_content(content, prompt)
+            if result:
+                results.append(result)
+        
+        if results.count("high quality") > results.count("low quality"):
+            return "high quality"
+        else:
+            return "low quality"
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 def fetch_documents_with_content(api_url: str, api_token: str, max_documents: int) -> list:
@@ -138,7 +158,9 @@ def tag_document(document_id: int, api_url: str, api_token: str, tag_id: int, cs
 def process_documents(documents: list, api_url: str, api_token: str, ignore_already_tagged: bool) -> None:
     session = requests.Session()
     csrf_token = get_csrf_token(session, api_url, api_token)
-    ollama_service = OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME)
+    ollama_service_1 = OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME)
+    ollama_service_2 = OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME)
+    ensemble_service = EnsembleOllamaService([ollama_service_1, ollama_service_2])
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = []
@@ -147,15 +169,15 @@ def process_documents(documents: list, api_url: str, api_token: str, ignore_alre
             if ignore_already_tagged and document.get('tags'):
                 logger.info(f"Skipping document ID {document['id']} as it is already tagged.")
                 continue
-            futures.append(executor.submit(process_single_document, document, content, ollama_service, api_url, api_token, csrf_token))
+            futures.append(executor.submit(process_single_document, document, content, ensemble_service, api_url, api_token, csrf_token))
         
         for future in tqdm(futures, desc=f"{Fore.CYAN}🤖 Processing Documents{Style.RESET_ALL}", 
                           unit="doc", bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
                           colour='green'):
             future.result()
 
-def process_single_document(document: dict, content: str, ollama_service: OllamaService, api_url: str, api_token: str, csrf_token: str) -> None:
-    quality_response = ollama_service.evaluate_content(content, PROMPT_DEFINITION)
+def process_single_document(document: dict, content: str, ensemble_service: EnsembleOllamaService, api_url: str, api_token: str, csrf_token: str) -> None:
+    quality_response = ensemble_service.evaluate_content(content, PROMPT_DEFINITION)
     logger.info(f"Ollama response for document ID {document['id']}: {quality_response}")
 
     if quality_response.lower() == 'low quality':

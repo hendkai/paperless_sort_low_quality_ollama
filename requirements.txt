@@ -3,3 +3,4 @@ tqdm
 python-dotenv
 tenacity
 colorama
+concurrent.futures
