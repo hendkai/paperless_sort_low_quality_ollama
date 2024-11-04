@@ -264,8 +264,6 @@ def main() -> None:
         ignore_already_tagged = os.getenv("IGNORE_ALREADY_TAGGED", "yes").lower() == 'yes'
         confirm = os.getenv("CONFIRM_PROCESS", "yes").lower()
 
-        rename_documents = input(f"{Fore.CYAN}🤖 Do you want to rename documents based on their content? (yes/no): {Style.RESET_ALL}").strip().lower() == 'yes'
-
         if confirm == "yes":
             print(f"{Fore.CYAN}🤖 Starting processing...{Style.RESET_ALL}")
             process_documents(documents, API_URL, API_TOKEN, ignore_already_tagged)
