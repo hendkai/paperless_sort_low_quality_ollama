@@ -28,6 +28,7 @@ LOW_QUALITY_TAG_ID = int(os.getenv("LOW_QUALITY_TAG_ID"))
 HIGH_QUALITY_TAG_ID = int(os.getenv("HIGH_QUALITY_TAG_ID"))
 MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS"))
 NUM_LLM_MODELS = int(os.getenv("NUM_LLM_MODELS", 3))
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 PROMPT_DEFINITION = """
 Please review the following document content and determine if it is of low quality or high quality.
@@ -42,7 +43,7 @@ Content:
 """
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def show_robot_animation():
@@ -63,7 +64,7 @@ class OllamaService:
         self.endpoint = endpoint
         self.model = model
 
-    def evaluate_content(self, content: str, prompt: str) -> str:
+    def evaluate_content(self, content: str, prompt: str, document_id: int) -> str:
         payload = {"model": self.model, "prompt": f"{prompt}{content}"}
         try:
             response = requests.post(f"{self.url}{self.endpoint}", json=payload)
@@ -76,7 +77,7 @@ class OllamaService:
                     if 'response' in res_json:
                         full_response += res_json['response']
                 except json.JSONDecodeError as e:
-                    logger.error(f"Error decoding JSON object: {e}")
+                    logger.error(f"Error decoding JSON object for document ID {document_id}: {e}")
                     logger.error(f"Response text: {res}")
             if "high quality" in full_response.lower():
                 return "high quality"
@@ -85,18 +86,18 @@ class OllamaService:
             else:
                 return ''
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error sending request to Ollama: {e}")
+            logger.error(f"Error sending request to Ollama for document ID {document_id}: {e}")
             return ''
 
 class EnsembleOllamaService:
     def __init__(self, services: list) -> None:
         self.services = services
 
-    def evaluate_content(self, content: str, prompt: str) -> str:
+    def evaluate_content(self, content: str, prompt: str, document_id: int) -> str:
         results = []
         for service in self.services:
-            result = service.evaluate_content(content, prompt)
-            logger.info(f"Model {service.model} result: {result}")
+            result = service.evaluate_content(content, prompt, document_id)
+            logger.info(f"Model {service.model} result for document ID {document_id}: {result}")
             if result:
                 results.append(result)
         
@@ -203,7 +204,7 @@ def process_documents(documents: list, api_url: str, api_token: str, ignore_alre
             future.result()
 
 def process_single_document(document: dict, content: str, ensemble_service: EnsembleOllamaService, api_url: str, api_token: str, csrf_token: str) -> None:
-    quality_response = ensemble_service.evaluate_content(content, PROMPT_DEFINITION)
+    quality_response = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document['id'])
     logger.info(f"Ollama response for document ID {document['id']}: {quality_response}")
 
     if quality_response.lower() == 'low quality':
