@@ -29,6 +29,7 @@ HIGH_QUALITY_TAG_ID = int(os.getenv("HIGH_QUALITY_TAG_ID"))
 MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS"))
 NUM_LLM_MODELS = int(os.getenv("NUM_LLM_MODELS", 3))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+RENAME_DOCUMENTS = os.getenv("RENAME_DOCUMENTS", "no").lower() == 'yes'
 
 PROMPT_DEFINITION = """
 Please review the following document content and determine if it is of low quality or high quality.
@@ -222,11 +223,11 @@ def process_single_document(document: dict, content: str, ensemble_service: Ense
     else:
         logger.info(f"The AI models could not find a consensus for document ID {document['id']}. The document will be skipped.")
 
-    rename_documents = os.getenv("RENAME_DOCUMENTS", "no").lower() == 'yes'
-    if rename_documents:
+    if RENAME_DOCUMENTS:
         details = fetch_document_details(api_url, api_token, document['id'])
+        old_title = details.get('title', '')
         new_title = generate_new_title(details.get('content', ''))
-        update_document_title(api_url, api_token, document['id'], new_title, csrf_token)
+        update_document_title(api_url, api_token, document['id'], new_title, csrf_token, old_title)
 
 def fetch_document_details(api_url: str, api_token: str, document_id: int) -> dict:
     headers = {'Authorization': f'Token {api_token}'}
@@ -238,7 +239,7 @@ def generate_new_title(content: str) -> str:
     # Placeholder for title generation logic based on content
     return "New Title Based on Content"
 
-def update_document_title(api_url: str, api_token: str, document_id: int, new_title: str, csrf_token: str) -> None:
+def update_document_title(api_url: str, api_token: str, document_id: int, new_title: str, csrf_token: str, old_title: str) -> None:
     headers = {
         'Authorization': f'Token {api_token}',
         'X-CSRFToken': csrf_token,
@@ -247,6 +248,8 @@ def update_document_title(api_url: str, api_token: str, document_id: int, new_ti
     payload = {"title": new_title}
     response = requests.patch(f'{api_url}/documents/{document_id}/', json=payload, headers=headers)
     response.raise_for_status()
+    logger.info(f"Document ID {document_id} renamed from '{old_title}' to '{new_title}'")
+    print(f"Document ID {document_id} renamed from '{old_title}' to '{new_title}'")
 
 def main() -> None:
     print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
