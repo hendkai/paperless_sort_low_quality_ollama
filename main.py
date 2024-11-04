@@ -269,22 +269,7 @@ def main() -> None:
         confirm = os.getenv("CONFIRM_PROCESS", "yes").lower()
 
         if confirm == "yes":
-            print2024-11-04 23:51:52,940 - INFO - The AI models could not find a consensus for document ID 65183. The document will be skipped.
-2024-11-04 23:51:53,604 - INFO - Model llama3.2 result for document ID 56208: high quality
-2024-11-04 23:51:54,620 - INFO - Model mistral result for document ID 56208: high quality
-2024-11-04 23:51:54,620 - INFO - Ollama response for document ID 56208: high quality
-2024-11-04 23:51:54,681 - INFO - Document 56208 already has the selected tag.
-2024-11-04 23:51:54,681 - INFO - Document ID 56208 tagged as high quality.
-2024-11-04 23:51:54,967 - INFO - Model mistral result for document ID 57763: low quality
-2024-11-04 23:51:54,967 - INFO - Ollama response for document ID 57763: low quality
-2024-11-04 23:51:55,043 - INFO - Document 57763 already has the selected tag.
-2024-11-04 23:51:55,044 - INFO - Document ID 57763 tagged as low quality.
-2024-11-04 23:51:57,033 - INFO - Model llama3.2 result for document ID 54629: 
-2024-11-04 23:51:58,563 - INFO - Model llama3.2 result for document ID 62780: low quality
-2024-11-04 23:51:59,027 - INFO - Model mistral result for document ID 62780: low quality
-2024-11-04 23:51:59,027 - INFO - Ollama response for document ID 62780: low quality
-2024-11-04 23:51:59,094 - INFO - Document 62780 already has the selected tag.
-2024-11-04 23:51:59,094 - INFO - Document ID 62780 tagged as low quality.(f"{Fore.CYAN}🤖 Starting processing...{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}🤖 Starting processing...{Style.RESET_ALL}")
             process_documents(documents, API_URL, API_TOKEN, ignore_already_tagged)
             print(f"{Fore.GREEN}🤖 Processing completed!{Style.RESET_ALL}")
         else:
