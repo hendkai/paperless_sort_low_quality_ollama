@@ -22,6 +22,7 @@ API_TOKEN = os.getenv("API_TOKEN")
 OLLAMA_URL = os.getenv("OLLAMA_URL")
 OLLAMA_ENDPOINT = os.getenv("OLLAMA_ENDPOINT")
 MODEL_NAME = os.getenv("MODEL_NAME")
+SECOND_MODEL_NAME = os.getenv("SECOND_MODEL_NAME")
 LOW_QUALITY_TAG_ID = int(os.getenv("LOW_QUALITY_TAG_ID"))
 HIGH_QUALITY_TAG_ID = int(os.getenv("HIGH_QUALITY_TAG_ID"))
 MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS"))
@@ -101,6 +102,13 @@ class EnsembleOllamaService:
         else:
             return "low quality"
 
+    def consensus_logic(self, results: list) -> str:
+        if len(results) < 2:
+            return ''
+        if results[0] == results[1]:
+            return results[0]
+        return ''
+
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 def fetch_documents_with_content(api_url: str, api_token: str, max_documents: int) -> list:
     headers = {'Authorization': f'Token {api_token}'}
@@ -159,7 +167,7 @@ def process_documents(documents: list, api_url: str, api_token: str, ignore_alre
     session = requests.Session()
     csrf_token = get_csrf_token(session, api_url, api_token)
     ollama_service_1 = OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME)
-    ollama_service_2 = OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME)
+    ollama_service_2 = OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, SECOND_MODEL_NAME)
     ensemble_service = EnsembleOllamaService([ollama_service_1, ollama_service_2])
 
     with ThreadPoolExecutor(max_workers=5) as executor:
