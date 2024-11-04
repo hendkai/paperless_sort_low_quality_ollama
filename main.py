@@ -102,12 +102,12 @@ class EnsembleOllamaService:
             if result:
                 results.append(result)
         
-        consensus_result = self.consensus_logic(results)
-        return consensus_result
+        consensus_result, consensus_reached = self.consensus_logic(results)
+        return consensus_result, consensus_reached
 
-    def consensus_logic(self, results: list) -> str:
+    def consensus_logic(self, results: list) -> tuple:
         if not results:
-            return ''
+            return '', False
         
         result_count = {}
         for result in results:
@@ -120,9 +120,9 @@ class EnsembleOllamaService:
         majority_results = [result for result, count in result_count.items() if count == max_count]
         
         if len(majority_results) == 1:
-            return majority_results[0]
+            return majority_results[0], True
         else:
-            return ''
+            return '', False
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 def fetch_documents_with_content(api_url: str, api_token: str, max_documents: int) -> list:
@@ -205,23 +205,27 @@ def process_documents(documents: list, api_url: str, api_token: str, ignore_alre
             future.result()
 
 def process_single_document(document: dict, content: str, ensemble_service: EnsembleOllamaService, api_url: str, api_token: str, csrf_token: str) -> None:
-    quality_response = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document['id'])
+    quality_response, consensus_reached = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document['id'])
     logger.info(f"Ollama response for document ID {document['id']}: {quality_response}")
 
-    if quality_response.lower() == 'low quality':
-        try:
-            tag_document(document['id'], api_url, api_token, LOW_QUALITY_TAG_ID, csrf_token)
-            logger.info(f"Document ID {document['id']} tagged as low quality.")
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"Error tagging document ID {document['id']} as low quality: {e}")
-    elif quality_response.lower() == 'high quality':
-        try:
-            tag_document(document['id'], api_url, api_token, HIGH_QUALITY_TAG_ID, csrf_token)
-            logger.info(f"Document ID {document['id']} tagged as high quality.")
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"Error tagging document ID {document['id']} as high quality: {e}")
+    if consensus_reached:
+        if quality_response.lower() == 'low quality':
+            try:
+                tag_document(document['id'], api_url, api_token, LOW_QUALITY_TAG_ID, csrf_token)
+                logger.info(f"Document ID {document['id']} tagged as low quality.")
+                print(f"The AI models decided to rank the file as low quality.")
+            except requests.exceptions.HTTPError as e:
+                logger.error(f"Error tagging document ID {document['id']} as low quality: {e}")
+        elif quality_response.lower() == 'high quality':
+            try:
+                tag_document(document['id'], api_url, api_token, HIGH_QUALITY_TAG_ID, csrf_token)
+                logger.info(f"Document ID {document['id']} tagged as high quality.")
+                print(f"The AI models decided to rank the file as high quality.")
+            except requests.exceptions.HTTPError as e:
+                logger.error(f"Error tagging document ID {document['id']} as high quality: {e}")
     else:
         logger.info(f"The AI models could not find a consensus for document ID {document['id']}. The document will be skipped.")
+        print(f"The AI models could not find a consensus for document ID {document['id']}. The document will be skipped.")
 
     if RENAME_DOCUMENTS:
         details = fetch_document_details(api_url, api_token, document['id'])
@@ -265,7 +269,22 @@ def main() -> None:
         confirm = os.getenv("CONFIRM_PROCESS", "yes").lower()
 
         if confirm == "yes":
-            print(f"{Fore.CYAN}🤖 Starting processing...{Style.RESET_ALL}")
+            print2024-11-04 23:51:52,940 - INFO - The AI models could not find a consensus for document ID 65183. The document will be skipped.
+2024-11-04 23:51:53,604 - INFO - Model llama3.2 result for document ID 56208: high quality
+2024-11-04 23:51:54,620 - INFO - Model mistral result for document ID 56208: high quality
+2024-11-04 23:51:54,620 - INFO - Ollama response for document ID 56208: high quality
+2024-11-04 23:51:54,681 - INFO - Document 56208 already has the selected tag.
+2024-11-04 23:51:54,681 - INFO - Document ID 56208 tagged as high quality.
+2024-11-04 23:51:54,967 - INFO - Model mistral result for document ID 57763: low quality
+2024-11-04 23:51:54,967 - INFO - Ollama response for document ID 57763: low quality
+2024-11-04 23:51:55,043 - INFO - Document 57763 already has the selected tag.
+2024-11-04 23:51:55,044 - INFO - Document ID 57763 tagged as low quality.
+2024-11-04 23:51:57,033 - INFO - Model llama3.2 result for document ID 54629: 
+2024-11-04 23:51:58,563 - INFO - Model llama3.2 result for document ID 62780: low quality
+2024-11-04 23:51:59,027 - INFO - Model mistral result for document ID 62780: low quality
+2024-11-04 23:51:59,027 - INFO - Ollama response for document ID 62780: low quality
+2024-11-04 23:51:59,094 - INFO - Document 62780 already has the selected tag.
+2024-11-04 23:51:59,094 - INFO - Document ID 62780 tagged as low quality.(f"{Fore.CYAN}🤖 Starting processing...{Style.RESET_ALL}")
             process_documents(documents, API_URL, API_TOKEN, ignore_already_tagged)
             print(f"{Fore.GREEN}🤖 Processing completed!{Style.RESET_ALL}")
         else:
