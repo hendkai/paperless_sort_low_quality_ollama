@@ -46,6 +46,7 @@ Before running the script, configure the necessary variables to match your envir
 - `LOW_QUALITY_TAG_ID`: The tag ID for documents classified as low quality.
 - `HIGH_QUALITY_TAG_ID`: The tag ID for documents classified as high quality.
 - `MODEL_NAME`: The name of the model to be used with Ollama for analysis.
+- `SECOND_MODEL_NAME`: The name of the second model to be used with Ollama for analysis.
 - `MAX_DOCUMENTS`: The maximum number of documents to process in a single run.
 - `IGNORE_ALREADY_TAGGED`: Whether to ignore already tagged documents.
 - `CONFIRM_PROCESS`: Whether to require confirmation before processing.
@@ -142,6 +143,10 @@ OLLAMA_ENDPOINT=/api/generate
 # Name of the AI model to use
 # Available models can be listed using 'ollama list'
 MODEL_NAME=llama2
+
+# Name of the second AI model to use
+# Available models can be listed using 'ollama list'
+SECOND_MODEL_NAME=mistral
 
 # Tag ID for low quality documents in Paperless-ngx
 # Find the ID in Paperless interface under Tags
