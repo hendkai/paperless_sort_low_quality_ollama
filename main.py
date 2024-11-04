@@ -219,6 +219,8 @@ def process_single_document(document: dict, content: str, ensemble_service: Ense
             logger.info(f"Document ID {document['id']} tagged as high quality.")
         except requests.exceptions.HTTPError as e:
             logger.error(f"Error tagging document ID {document['id']} as high quality: {e}")
+    else:
+        logger.info(f"The AI models could not find a consensus for document ID {document['id']}. The document will be skipped.")
 
     rename_documents = os.getenv("RENAME_DOCUMENTS", "no").lower() == 'yes'
     if rename_documents:
