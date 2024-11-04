@@ -143,7 +143,7 @@ OLLAMA_ENDPOINT=/api/generate
 
 # Name of the AI model to use
 # Available models can be listed using 'ollama list'
-MODEL_NAME=llama2
+MODEL_NAME=llama3.2
 
 # Name of the second AI model to use
 # Available models can be listed using 'ollama list'

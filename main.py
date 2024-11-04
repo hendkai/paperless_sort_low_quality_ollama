@@ -23,9 +23,11 @@ OLLAMA_URL = os.getenv("OLLAMA_URL")
 OLLAMA_ENDPOINT = os.getenv("OLLAMA_ENDPOINT")
 MODEL_NAME = os.getenv("MODEL_NAME")
 SECOND_MODEL_NAME = os.getenv("SECOND_MODEL_NAME")
+THIRD_MODEL_NAME = os.getenv("THIRD_MODEL_NAME")
 LOW_QUALITY_TAG_ID = int(os.getenv("LOW_QUALITY_TAG_ID"))
 HIGH_QUALITY_TAG_ID = int(os.getenv("HIGH_QUALITY_TAG_ID"))
 MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS"))
+NUM_LLM_MODELS = int(os.getenv("NUM_LLM_MODELS", 3))
 
 PROMPT_DEFINITION = """
 Please review the following document content and determine if it is of low quality or high quality.
@@ -94,6 +96,7 @@ class EnsembleOllamaService:
         results = []
         for service in self.services:
             result = service.evaluate_content(content, prompt)
+            logger.info(f"Model {service.model} result: {result}")
             if result:
                 results.append(result)
         
@@ -101,11 +104,23 @@ class EnsembleOllamaService:
         return consensus_result
 
     def consensus_logic(self, results: list) -> str:
-        if len(results) < 2:
+        if not results:
             return ''
-        if results[0] == results[1]:
-            return results[0]
-        return ''
+        
+        result_count = {}
+        for result in results:
+            if result in result_count:
+                result_count[result] += 1
+            else:
+                result_count[result] = 1
+        
+        max_count = max(result_count.values())
+        majority_results = [result for result, count in result_count.items() if count == max_count]
+        
+        if len(majority_results) == 1:
+            return majority_results[0]
+        else:
+            return ''
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 def fetch_documents_with_content(api_url: str, api_token: str, max_documents: int) -> list:
@@ -164,9 +179,14 @@ def tag_document(document_id: int, api_url: str, api_token: str, tag_id: int, cs
 def process_documents(documents: list, api_url: str, api_token: str, ignore_already_tagged: bool) -> None:
     session = requests.Session()
     csrf_token = get_csrf_token(session, api_url, api_token)
-    ollama_service_1 = OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME)
-    ollama_service_2 = OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, SECOND_MODEL_NAME)
-    ensemble_service = EnsembleOllamaService([ollama_service_1, ollama_service_2])
+    services = []
+    if NUM_LLM_MODELS >= 1:
+        services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME))
+    if NUM_LLM_MODELS >= 2:
+        services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, SECOND_MODEL_NAME))
+    if NUM_LLM_MODELS >= 3:
+        services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, THIRD_MODEL_NAME))
+    ensemble_service = EnsembleOllamaService(services)
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = []
