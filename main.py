@@ -97,10 +97,8 @@ class EnsembleOllamaService:
             if result:
                 results.append(result)
         
-        if results.count("high quality") > results.count("low quality"):
-            return "high quality"
-        else:
-            return "low quality"
+        consensus_result = self.consensus_logic(results)
+        return consensus_result
 
     def consensus_logic(self, results: list) -> str:
         if len(results) < 2:
@@ -201,6 +199,32 @@ def process_single_document(document: dict, content: str, ensemble_service: Ense
         except requests.exceptions.HTTPError as e:
             logger.error(f"Error tagging document ID {document['id']} as high quality: {e}")
 
+    rename_documents = os.getenv("RENAME_DOCUMENTS", "no").lower() == 'yes'
+    if rename_documents:
+        details = fetch_document_details(api_url, api_token, document['id'])
+        new_title = generate_new_title(details.get('content', ''))
+        update_document_title(api_url, api_token, document['id'], new_title, csrf_token)
+
+def fetch_document_details(api_url: str, api_token: str, document_id: int) -> dict:
+    headers = {'Authorization': f'Token {api_token}'}
+    response = requests.get(f'{api_url}/documents/{document_id}/details', headers=headers)
+    response.raise_for_status()
+    return response.json()
+
+def generate_new_title(content: str) -> str:
+    # Placeholder for title generation logic based on content
+    return "New Title Based on Content"
+
+def update_document_title(api_url: str, api_token: str, document_id: int, new_title: str, csrf_token: str) -> None:
+    headers = {
+        'Authorization': f'Token {api_token}',
+        'X-CSRFToken': csrf_token,
+        'Content-Type': 'application/json'
+    }
+    payload = {"title": new_title}
+    response = requests.patch(f'{api_url}/documents/{document_id}/', json=payload, headers=headers)
+    response.raise_for_status()
+
 def main() -> None:
     print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
     logger.info("Searching for documents with content...")
@@ -213,6 +237,8 @@ def main() -> None:
 
         ignore_already_tagged = os.getenv("IGNORE_ALREADY_TAGGED", "yes").lower() == 'yes'
         confirm = os.getenv("CONFIRM_PROCESS", "yes").lower()
+
+        rename_documents = input(f"{Fore.CYAN}🤖 Do you want to rename documents based on their content? (yes/no): {Style.RESET_ALL}").strip().lower() == 'yes'
 
         if confirm == "yes":
             print(f"{Fore.CYAN}🤖 Starting processing...{Style.RESET_ALL}")

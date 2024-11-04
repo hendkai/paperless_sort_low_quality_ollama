@@ -118,6 +118,7 @@ To obtain the API token required for authentication:
    - Confirm the processing of documents to proceed with the analysis.
    - Select specific documents to process or skip from a list.
    - Review the summary of actions to be taken before executing them.
+   - Choose whether to rename documents based on their content.
 
 ## 📝 Example
 
