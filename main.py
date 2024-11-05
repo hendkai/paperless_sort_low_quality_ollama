@@ -87,8 +87,12 @@ class OllamaService:
             else:
                 return ''
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error sending request to Ollama for document ID {document_id}: {e}")
-            return ''
+            if response.status_code == 404:
+                logger.error(f"404 Client Error: Not Found for document ID {document_id}: {e}")
+                return '404 Client Error: Not Found'
+            else:
+                logger.error(f"Error sending request to Ollama for document ID {document_id}: {e}")
+                return ''
 
 class EnsembleOllamaService:
     def __init__(self, services: list) -> None:
@@ -232,6 +236,8 @@ def process_single_document(document: dict, content: str, ensemble_service: Ense
         old_title = details.get('title', '')
         new_title = generate_new_title(details.get('content', ''))
         update_document_title(api_url, api_token, document['id'], new_title, csrf_token, old_title)
+
+    time.sleep(1)  # Add delay between requests
 
 def fetch_document_details(api_url: str, api_token: str, document_id: int) -> dict:
     headers = {'Authorization': f'Token {api_token}'}
