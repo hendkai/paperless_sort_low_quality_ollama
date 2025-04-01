@@ -7,17 +7,153 @@ from datetime import datetime
 
 print("Starte DokumentenKI GUI...")
 
+# Globale Variablen
+processing_active = False
+log_entries = []
+process = None
+log_file_path = os.path.abspath("log.txt")  # Pfad zur Log-Datei
+preview_path = os.path.abspath("preview.png")  # Pfad zum Vorschaubild
+current_preview_file = None  # Aktuell vorgeschaute Datei
+current_document_name = "Keine Datei ausgewählt"  # Name des aktuellen Dokuments
+preview_support = False  # Initialisiere die Variable hier!
+debug_mode = True  # Debug-Modus für ausführliche Logs
+
 # Hilfsfunktionen für Fehlerprotokollierung
 def log_error(message, exception=None):
-    with open("error_log.txt", "w") as f:
-        f.write(f"{message}\n")
-        if exception:
-            f.write(f"Exception: {str(exception)}\n")
-            f.write(traceback.format_exc())
+    try:
+        with open("error_log.txt", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
+            if exception:
+                f.write(f"Exception: {str(exception)}\n")
+                f.write(traceback.format_exc())
+                f.write("\n-----------------------------------\n")
+    except:
+        pass  # Stiller Fehler, wenn auch das Loggen fehlschlägt
     
     print(f"FEHLER: {message}")
     if exception:
         print(f"Exception: {str(exception)}")
+
+# Sichere Pillow-Import-Funktion
+def setup_pillow():
+    global preview_support
+    try:
+        from PIL import Image
+        preview_support = True
+        print("Vorschau-Unterstützung verfügbar.")
+        return True
+    except ImportError:
+        preview_support = False
+        print("PIL nicht installiert, versuche Installation...")
+        try:
+            import subprocess
+            subprocess.run([sys.executable, "-m", "pip", "install", "pillow"], 
+                          check=True, capture_output=True)
+            from PIL import Image
+            preview_support = True
+            print("PIL erfolgreich installiert!")
+            return True
+        except Exception as e:
+            log_error("Konnte PIL nicht installieren", e)
+            preview_support = False
+            return False
+
+# Angepasste Anzeigegröße mit 16:9 Seitenverhältnis
+def get_display_size():
+    try:
+        # Versuche, Bildschirmgröße zu ermitteln
+        if 'ctypes' in sys.modules or True:
+            import ctypes
+            user32 = ctypes.windll.user32
+            screen_width = user32.GetSystemMetrics(0)
+            screen_height = user32.GetSystemMetrics(1)
+            
+            # Gib 85% der verfügbaren Bildschirmgröße als Ausgangswert
+            avail_width = int(screen_width * 0.85)
+            avail_height = int(screen_height * 0.85)
+            
+            # Berechne die optimale 16:9 Größe innerhalb der verfügbaren Fläche
+            if avail_width / avail_height > 16/9:
+                # Wenn der Bildschirm breiter als 16:9 ist, höhenbegrenzt
+                height = avail_height
+                width = int(height * 16/9)
+            else:
+                # Wenn der Bildschirm schmaler als 16:9 ist, breitenbegrenzt
+                width = avail_width
+                height = int(width * 9/16)
+            
+            print(f"Optimale 16:9 Größe: {width}x{height}")
+            return width, height
+    except Exception as e:
+        print(f"Fehler bei Bildschirmgrößenermittlung: {str(e)}")
+    
+    # Fallback auf Standard 16:9 Größe
+    return 1600, 900  # 16:9 Standardgröße
+
+# Verbesserte Funktion zum Filtern von Emoji-Zeichen
+def filter_emojis(text):
+    if not text:
+        return text
+        
+    try:
+        # Filterung bekannter problematischer Unicode-Zeichen/Emojis
+        # Entfernt Unicode-Zeichen außerhalb des BMP (Basic Multilingual Plane)
+        filtered = ""
+        for char in text:
+            # BMP-Zeichen haben Code-Points < 0x10000
+            if ord(char) < 0x10000 and ord(char) != 0x1F916:  # Explizit das Roboter-Emoji ausschließen
+                filtered += char
+            else:
+                filtered += "[emoji]"  # Ersetze Emojis durch Text
+        return filtered
+    except:
+        # Fallback: Aggressives Filtern aller potenziell problematischen Zeichen
+        return ''.join(c for c in text if ord(c) < 128)
+
+# Sichere Text-Hinzufügungsfunktion 
+def safe_add_text(text, **kwargs):
+    try:
+        # Stelle sicher, dass text ein String ist
+        if text is None:
+            text = ""
+        else:
+            text = str(text)
+            
+        # Stelle sicher, dass color-Parameter korrekt ist, falls vorhanden
+        if 'color' in kwargs and kwargs['color'] is not None:
+            color = kwargs['color']
+            # Überprüfe, ob color eine Liste mit 3 oder 4 Elementen ist
+            if not (isinstance(color, list) and (len(color) == 3 or len(color) == 4)):
+                # Setze einen Standardwert, wenn das Format ungültig ist
+                kwargs['color'] = [255, 255, 255]
+                
+        # Sichere size-Parameter
+        if 'size' in kwargs and kwargs['size'] is not None:
+            try:
+                kwargs['size'] = int(kwargs['size'])
+            except (ValueError, TypeError):
+                # Entferne size bei ungültigem Format
+                del kwargs['size']
+                
+        # Teste auf ungültigen tag-Parameter
+        if 'tag' in kwargs and dpg.does_item_exist(kwargs['tag']):
+            # Wenn der Tag bereits existiert, löschen wir ihn erst
+            try:
+                dpg.delete_item(kwargs['tag'])
+            except:
+                # Falls das Löschen fehlschlägt, generieren wir einen neuen Tag
+                import uuid
+                kwargs['tag'] = f"text_{uuid.uuid4().hex[:8]}"
+                
+        # Füge den Text sicher hinzu
+        return dpg.add_text(text, **kwargs)
+    except Exception as e:
+        # Fallback: Füge Text ohne spezielle Formatierung hinzu
+        try:
+            return dpg.add_text(f"Text-Fehler: {str(text)[:20]}...")
+        except:
+            # Äußerster Fallback
+            return None
 
 # Hauptprogramm mit umfassender Fehlerbehandlung
 try:
@@ -43,17 +179,8 @@ try:
         system_monitoring = False
         print("System-Monitoring nicht verfügbar.")
     
-    # Globale Variablen
-    processing_active = False
-    log_entries = []
-    process = None
-    log_file_path = os.path.abspath("log.txt")  # Pfad zur Log-Datei
-    
     # Hauptskript-Pfad
     script_path = "main.py"
-    
-    # Debug-Modus für ausführliche Logs
-    debug_mode = True
     
     # Prüfe, ob main.py existiert
     if not os.path.exists(script_path):
@@ -115,7 +242,7 @@ try:
             env_file = ".env"
             print("Keine .env Datei gefunden, werde eine erstellen.")
     
-    # Verbesserte Prozesssteuerung mit Diagnostik und Unicode-Unterstützung
+    # Verbesserte Prozesssteuerung mit Diagnostik und Emoji-Filterung
     def toggle_processing(sender, app_data):
         global processing_active, log_entries, process
         
@@ -183,12 +310,8 @@ try:
                         try:
                             line = process.stdout.readline()
                             if line:
-                                # Versuche Unicode-Zeichen zu ersetzen, falls nicht darstellbar
-                                try:
-                                    clean_line = line.encode('cp1252', errors='replace').decode('cp1252')
-                                except:
-                                    # Wenn alles fehlschlägt, entferne problematische Zeichen
-                                    clean_line = ''.join(c if ord(c) < 128 else '?' for c in line)
+                                # Filtere problematische Unicode-Zeichen/Emojis
+                                clean_line = filter_emojis(line)
                                 
                                 # Logge bereinigte Prozessausgabe
                                 log_entries.append(clean_line.strip())
@@ -221,7 +344,7 @@ try:
             dpg.configure_item("status_text", default_value="Status: Bereit")
             update_log_display()
     
-    # Aktualisiere Log-Anzeige mit Priorität auf Ausgabe und Direktanzeige
+    # Aktualisiere Log-Anzeige mit Emoji-Filterung
     def update_log_display():
         if dpg.does_item_exist("log_area"):
             log_lines = []
@@ -229,18 +352,22 @@ try:
             # Kombiniere direkte Prozessausgabe mit Logdatei
             # Zeige zuerst die internen Logs (z.B. Debug-Infos)
             if log_entries:
-                log_lines.extend(log_entries[-15:])
+                # Filtere Emojis aus allen Logeinträgen
+                filtered_entries = [filter_emojis(entry) for entry in log_entries[-15:]]
+                log_lines.extend(filtered_entries)
             
             # Dann versuche, die tatsächliche Logdatei zu lesen
             try:
                 if os.path.exists(log_file_path):
-                    with open(log_file_path, "r") as f:
+                    with open(log_file_path, "r", encoding="utf-8", errors="replace") as f:
                         file_lines = f.readlines()
                         
                     if file_lines:
                         # Füge bis zu 15 Zeilen aus der Datei hinzu
                         file_recent = file_lines[-15:] if len(file_lines) > 15 else file_lines
-                        log_lines.extend([line.strip() for line in file_recent])
+                        # Filtere Emojis aus allen Logzeilen
+                        filtered_lines = [filter_emojis(line.strip()) for line in file_recent]
+                        log_lines.extend(filtered_lines)
             except Exception as e:
                 if debug_mode:
                     log_lines.append(f"Log-Datei-Fehler: {str(e)}")
@@ -311,40 +438,54 @@ try:
             log_entries.append(f"[{datetime.now().strftime('%H:%M:%S')}] Fehler beim Speichern: {str(e)}")
             update_log_display()
     
+    # Bestimme optimale 16:9 Fenstergröße
+    width, height = get_display_size()
+    
+    # Stelle sicher, dass es immer ein genaues 16:9 Verhältnis hat
+    # (Rundungsfehler korrigieren)
+    height = int(width * 9/16)
+    
+    print(f"Verwende 16:9 Fenstergröße: {width}x{height}")
+    
     # DearPyGui initialisieren
     print("Erstelle GUI...")
     dpg.create_context()
     
-    # Hauptfenster definieren
-    with dpg.window(label="DokumentenKI", tag="main_window", width=800, height=600):
+    # Berechne die Spaltenbreiten proportional zur Gesamtbreite
+    left_col_width = int(width * 0.20)      # 20% der Breite
+    middle_col_width = int(width * 0.30)    # 30% der Breite
+    right_col_width = int(width * 0.50)     # 50% der Breite
+    content_height = height - 50            # Berücksichtigt Titelleiste
+    
+    with dpg.window(label="DokumentenKI", tag="main_window", width=width, height=height):
         with dpg.tab_bar():
             # Tab: Verarbeitung
             with dpg.tab(label="Verarbeitung"):
                 with dpg.group(horizontal=True):
                     # Linke Seite - Status
-                    with dpg.child_window(width=250, height=550):
-                        dpg.add_text("SYSTEM STATUS", color=[255, 255, 0])
+                    with dpg.child_window(width=left_col_width, height=content_height):
+                        safe_add_text("SYSTEM STATUS", color=[255, 255, 0])
                         dpg.add_separator()
                         
                         # Status
-                        dpg.add_text("Status: Bereit", tag="status_text")
+                        safe_add_text("Status: Bereit", tag="status_text")
                         
                         # System-Info
                         if system_monitoring:
-                            dpg.add_text("SYSTEM-INFO", color=[255, 255, 0])
+                            safe_add_text("SYSTEM-INFO", color=[255, 255, 0])
                             dpg.add_separator()
-                            dpg.add_text("CPU: 0%\nRAM: 0%", tag="system_info")
+                            safe_add_text("CPU: 0%\nRAM: 0%", tag="system_info")
                         
                         # Diagnose-Bereich
-                        dpg.add_text("DIAGNOSE", color=[255, 255, 0])
+                        safe_add_text("DIAGNOSE", color=[255, 255, 0])
                         dpg.add_separator()
                         
                         # Direkter Aufruf
-                        dpg.add_text("Skript-Pfad:")
+                        safe_add_text("Skript-Pfad:")
                         dpg.add_input_text(
                             default_value=script_path,
                             tag="script_path_input",
-                            width=230
+                            width=left_col_width-20
                         )
                         
                         # Argumente
@@ -352,7 +493,7 @@ try:
                         dpg.add_input_text(
                             default_value="--no-confirm",
                             tag="script_args_input",
-                            width=230
+                            width=left_col_width-20
                         )
                         
                         # Debug-Modus Checkbox
@@ -362,229 +503,235 @@ try:
                             callback=lambda sender, data: globals().update(debug_mode=data)
                         )
                     
-                    # Rechte Seite - Verarbeitung & Log
-                    with dpg.child_window(width=550, height=550):
+                    # Mittlerer Teil - Verarbeitung & Log
+                    with dpg.child_window(width=middle_col_width, height=content_height):
                         # Überschrift
-                        dpg.add_text("DOKUMENTENVERARBEITUNG", color=[255, 255, 0])
+                        safe_add_text("DOKUMENTENVERARBEITUNG", color=[255, 255, 0])
                         dpg.add_separator()
                         
                         # Start/Stop Button
                         dpg.add_button(
                             label="START", 
                             callback=toggle_processing,
-                            width=530, 
-                            height=40, 
+                            width=middle_col_width-20, 
+                            height=60, 
                             tag="process_button"
                         )
                         
                         # Log-Bereich
-                        dpg.add_text("LOG", color=[255, 255, 0])
+                        safe_add_text("LOG", color=[255, 255, 0])
                         dpg.add_separator()
                         dpg.add_input_text(
                             multiline=True, 
                             readonly=True, 
-                            width=530, 
-                            height=450, 
+                            width=middle_col_width-20, 
+                            height=content_height-150, 
                             tag="log_area"
                         )
+                    
+                    # Rechter Teil - Dokumentenvorschau
+                    with dpg.child_window(width=right_col_width, height=content_height):
+                        safe_add_text("DOKUMENTENVORSCHAU", color=[255, 255, 0])
+                        dpg.add_separator()
                         
+                        # Dateiname und Info
+                        safe_add_text("Keine Datei ausgewählt", tag="document_name", wrap=right_col_width-20)
+                        dpg.add_separator()
+                        
+                        # Vorschaubild-Bereich
+                        if preview_support:
+                            # Platzhalter für Vorschau
+                            safe_add_text("Vorschaubild wird geladen, sobald verfügbar...")
+                            
+                            # Bildcontainer mit Scrolling
+                            with dpg.child_window(width=right_col_width-20, height=content_height-100, horizontal_scrollbar=True):
+                                # Hier wird das Bild angezeigt, wenn es verfügbar ist
+                                dpg.add_image(
+                                    texture_tag="preview_texture", 
+                                    tag="preview_image",
+                                    show=False
+                                )
+                        else:
+                            safe_add_text("Vorschau nicht verfügbar.\nBitte installiere PIL mit 'pip install pillow'.")
+            
             # Tab: Einstellungen
             with dpg.tab(label="Einstellungen"):
-                if env_support:
-                    with dpg.child_window(width=780, height=550):
-                        # Scrollbarer Bereich für alle Einstellungen
+                with dpg.child_window(width=width-20, height=content_height, horizontal_scrollbar=True):
+                    if env_support:
+                        input_width = width - 40
                         
-                        # 1. API-Einstellungen
-                        dpg.add_text("PAPERLESS-NGX API EINSTELLUNGEN", color=[255, 255, 0])
-                        dpg.add_separator()
+                        with dpg.collapsing_header(label="API EINSTELLUNGEN", default_open=True):
+                            dpg.add_separator()
+                            
+                            # API URL
+                            safe_add_text("API URL:")
+                            dpg.add_input_text(
+                                default_value=settings["API_URL"],
+                                tag="setting_API_URL",
+                                width=input_width
+                            )
+                            
+                            safe_add_text("API Token:")
+                            dpg.add_input_text(
+                                default_value=settings["API_TOKEN"],
+                                tag="setting_API_TOKEN",
+                                password=True,
+                                width=input_width
+                            )
                         
-                        # API URL
-                        dpg.add_text("API URL:")
-                        dpg.add_input_text(
-                            default_value=settings["API_URL"],
-                            tag="setting_API_URL",
-                            width=760
-                        )
+                        with dpg.collapsing_header(label="OLLAMA EINSTELLUNGEN", default_open=True):
+                            dpg.add_separator()
+                            
+                            safe_add_text("Ollama URL:")
+                            dpg.add_input_text(
+                                default_value=settings["OLLAMA_URL"],
+                                tag="setting_OLLAMA_URL",
+                                width=input_width
+                            )
+                            
+                            safe_add_text("Ollama Endpoint:")
+                            dpg.add_input_text(
+                                default_value=settings["OLLAMA_ENDPOINT"],
+                                tag="setting_OLLAMA_ENDPOINT",
+                                width=input_width
+                            )
                         
-                        # API Token
-                        dpg.add_text("API Token:")
-                        dpg.add_input_text(
-                            default_value=settings["API_TOKEN"],
-                            tag="setting_API_TOKEN",
-                            password=True,
-                            width=760
-                        )
+                        with dpg.collapsing_header(label="KI-MODELL EINSTELLUNGEN", default_open=True):
+                            dpg.add_separator()
+                            
+                            safe_add_text("Primäres Modell:")
+                            dpg.add_input_text(
+                                default_value=settings["MODEL_NAME"],
+                                tag="setting_MODEL_NAME",
+                                width=input_width
+                            )
+                            
+                            safe_add_text("Sekundäres Modell:")
+                            dpg.add_input_text(
+                                default_value=settings["SECOND_MODEL_NAME"],
+                                tag="setting_SECOND_MODEL_NAME",
+                                width=input_width
+                            )
+                            
+                            safe_add_text("Tertiäres Modell:")
+                            dpg.add_input_text(
+                                default_value=settings["THIRD_MODEL_NAME"],
+                                tag="setting_THIRD_MODEL_NAME",
+                                width=input_width
+                            )
+                            
+                            safe_add_text("Anzahl zu verwendender Modelle:")
+                            dpg.add_slider_int(
+                                default_value=int(settings["NUM_LLM_MODELS"]),
+                                min_value=1,
+                                max_value=3,
+                                tag="setting_NUM_LLM_MODELS",
+                                width=input_width
+                            )
                         
-                        dpg.add_spacer(height=10)
+                        with dpg.collapsing_header(label="TAG EINSTELLUNGEN", default_open=True):
+                            dpg.add_separator()
+                            
+                            safe_add_text("Tag ID für niedrige Qualität:")
+                            dpg.add_input_text(
+                                default_value=settings["LOW_QUALITY_TAG_ID"],
+                                tag="setting_LOW_QUALITY_TAG_ID",
+                                width=input_width
+                            )
+                            
+                            safe_add_text("Tag ID für hohe Qualität:")
+                            dpg.add_input_text(
+                                default_value=settings["HIGH_QUALITY_TAG_ID"],
+                                tag="setting_HIGH_QUALITY_TAG_ID",
+                                width=input_width
+                            )
                         
-                        # 2. Ollama-Einstellungen
-                        dpg.add_text("OLLAMA EINSTELLUNGEN", color=[255, 255, 0])
-                        dpg.add_separator()
+                        with dpg.collapsing_header(label="PROZESS EINSTELLUNGEN", default_open=True):
+                            dpg.add_separator()
+                            
+                            safe_add_text("Maximale Dokumente:")
+                            dpg.add_input_text(
+                                default_value=settings["MAX_DOCUMENTS"],
+                                tag="setting_MAX_DOCUMENTS",
+                                width=input_width
+                            )
+                            
+                            dpg.add_checkbox(
+                                label="Bereits getaggte Dokumente ignorieren",
+                                default_value=settings["IGNORE_ALREADY_TAGGED"].lower() == "yes",
+                                tag="setting_IGNORE_ALREADY_TAGGED"
+                            )
+                            
+                            dpg.add_checkbox(
+                                label="Verarbeitung bestätigen",
+                                default_value=settings["CONFIRM_PROCESS"].lower() == "yes",
+                                tag="setting_CONFIRM_PROCESS"
+                            )
+                            
+                            dpg.add_checkbox(
+                                label="Dokumente automatisch umbenennen",
+                                default_value=settings["RENAME_DOCUMENTS"].lower() == "yes",
+                                tag="setting_RENAME_DOCUMENTS"
+                            )
                         
-                        dpg.add_text("Ollama URL:")
-                        dpg.add_input_text(
-                            default_value=settings["OLLAMA_URL"],
-                            tag="setting_OLLAMA_URL",
-                            width=760
-                        )
+                        with dpg.collapsing_header(label="LOGGING EINSTELLUNGEN", default_open=True):
+                            dpg.add_separator()
+                            
+                            safe_add_text("Log-Level:")
+                            dpg.add_combo(
+                                items=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                                default_value=settings["LOG_LEVEL"],
+                                tag="setting_LOG_LEVEL",
+                                width=input_width
+                            )
                         
-                        dpg.add_text("Ollama Endpoint:")
-                        dpg.add_input_text(
-                            default_value=settings["OLLAMA_ENDPOINT"],
-                            tag="setting_OLLAMA_ENDPOINT",
-                            width=760
-                        )
-                        
-                        dpg.add_spacer(height=10)
-                        
-                        # 3. Modell-Einstellungen
-                        dpg.add_text("KI-MODELL EINSTELLUNGEN", color=[255, 255, 0])
-                        dpg.add_separator()
-                        
-                        dpg.add_text("Primäres Modell:")
-                        dpg.add_input_text(
-                            default_value=settings["MODEL_NAME"],
-                            tag="setting_MODEL_NAME",
-                            width=760
-                        )
-                        
-                        dpg.add_text("Sekundäres Modell:")
-                        dpg.add_input_text(
-                            default_value=settings["SECOND_MODEL_NAME"],
-                            tag="setting_SECOND_MODEL_NAME",
-                            width=760
-                        )
-                        
-                        dpg.add_text("Tertiäres Modell:")
-                        dpg.add_input_text(
-                            default_value=settings["THIRD_MODEL_NAME"],
-                            tag="setting_THIRD_MODEL_NAME",
-                            width=760
-                        )
-                        
-                        dpg.add_text("Anzahl verwendeter LLM-Modelle:")
-                        dpg.add_slider_int(
-                            default_value=int(settings["NUM_LLM_MODELS"]),
-                            min_value=1,
-                            max_value=3,
-                            tag="setting_NUM_LLM_MODELS",
-                            width=760
-                        )
-                        
-                        dpg.add_spacer(height=10)
-                        
-                        # 4. Tag-Einstellungen
-                        dpg.add_text("TAG EINSTELLUNGEN", color=[255, 255, 0])
-                        dpg.add_separator()
-                        
-                        dpg.add_text("ID für Dokumente niedriger Qualität:")
-                        dpg.add_input_int(
-                            default_value=int(settings["LOW_QUALITY_TAG_ID"]),
-                            tag="setting_LOW_QUALITY_TAG_ID",
-                            width=760
-                        )
-                        
-                        dpg.add_text("ID für Dokumente hoher Qualität:")
-                        dpg.add_input_int(
-                            default_value=int(settings["HIGH_QUALITY_TAG_ID"]),
-                            tag="setting_HIGH_QUALITY_TAG_ID",
-                            width=760
-                        )
-                        
-                        dpg.add_spacer(height=10)
-                        
-                        # 5. Prozesseinstellungen
-                        dpg.add_text("PROZESS EINSTELLUNGEN", color=[255, 255, 0])
-                        dpg.add_separator()
-                        
-                        dpg.add_text("Maximale Anzahl zu verarbeitender Dokumente (0 = unbegrenzt):")
-                        dpg.add_input_int(
-                            default_value=int(settings["MAX_DOCUMENTS"]),
-                            tag="setting_MAX_DOCUMENTS",
-                            width=760
-                        )
-                        
-                        # Boolean-Einstellungen
-                        dpg.add_checkbox(
-                            label="Bereits getaggte Dokumente ignorieren",
-                            default_value=settings["IGNORE_ALREADY_TAGGED"].lower() == "yes",
-                            tag="setting_IGNORE_ALREADY_TAGGED"
-                        )
-                        
-                        dpg.add_checkbox(
-                            label="Verarbeitung bestätigen",
-                            default_value=settings["CONFIRM_PROCESS"].lower() == "yes",
-                            tag="setting_CONFIRM_PROCESS"
-                        )
-                        
-                        dpg.add_checkbox(
-                            label="Dokumente umbenennen basierend auf Inhalt",
-                            default_value=settings["RENAME_DOCUMENTS"].lower() == "yes",
-                            tag="setting_RENAME_DOCUMENTS"
-                        )
-                        
-                        dpg.add_spacer(height=10)
-                        
-                        # 6. Logging-Einstellungen
-                        dpg.add_text("LOGGING EINSTELLUNGEN", color=[255, 255, 0])
-                        dpg.add_separator()
-                        
-                        dpg.add_text("Log-Level:")
-                        dpg.add_combo(
-                            items=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-                            default_value=settings["LOG_LEVEL"],
-                            tag="setting_LOG_LEVEL",
-                            width=760
-                        )
-                        
-                        dpg.add_spacer(height=10)
-                        
-                        # 7. Pfad-Einstellungen
-                        dpg.add_text("PFAD EINSTELLUNGEN", color=[255, 255, 0])
-                        dpg.add_separator()
-                        
-                        dpg.add_text("Skript-Pfad:")
-                        dpg.add_input_text(
-                            default_value=settings["SCRIPT_PATH"],
-                            tag="setting_SCRIPT_PATH",
-                            width=760
-                        )
-                        
-                        dpg.add_text("Log-Pfad:")
-                        dpg.add_input_text(
-                            default_value=settings["LOG_PATH"],
-                            tag="setting_LOG_PATH",
-                            width=760
-                        )
-                        
-                        dpg.add_text("Vorschau-Pfad:")
-                        dpg.add_input_text(
-                            default_value=settings["PREVIEW_PATH"],
-                            tag="setting_PREVIEW_PATH",
-                            width=760
-                        )
-                        
-                        dpg.add_spacer(height=20)
+                        with dpg.collapsing_header(label="PFAD EINSTELLUNGEN", default_open=True):
+                            dpg.add_separator()
+                            
+                            safe_add_text("Skript-Pfad:")
+                            dpg.add_input_text(
+                                default_value=settings.get("SCRIPT_PATH", os.path.abspath("")),
+                                tag="setting_SCRIPT_PATH",
+                                width=input_width
+                            )
+                            
+                            safe_add_text("Log-Pfad:")
+                            dpg.add_input_text(
+                                default_value=settings.get("LOG_PATH", os.path.abspath("log.txt")),
+                                tag="setting_LOG_PATH",
+                                width=input_width
+                            )
+                            
+                            safe_add_text("Vorschau-Pfad:")
+                            dpg.add_input_text(
+                                default_value=settings.get("PREVIEW_PATH", os.path.abspath("preview.png")),
+                                tag="setting_PREVIEW_PATH",
+                                width=input_width
+                            )
                         
                         # Speichern-Button
+                        dpg.add_spacer(height=20)
                         dpg.add_button(
                             label="ALLE EINSTELLUNGEN SPEICHERN",
                             callback=save_settings,
-                            width=760,
-                            height=40
+                            width=input_width,
+                            height=60
                         )
-                else:
-                    dpg.add_text("Einstellungen nicht verfügbar.\nPython-dotenv nicht installiert.")
-                    
+                    else:
+                        safe_add_text("Einstellungen nicht verfügbar.\nPython-dotenv nicht installiert.")
+            
             # Tab: Über
             with dpg.tab(label="Über"):
-                dpg.add_text("DokumentenKI System")
-                dpg.add_separator()
-                dpg.add_text(
-                    "Version: 1.0\n"
-                    "Dieses Programm verarbeitet Dokumente mit KI.\n\n"
-                    "© 2023 Cybersecurity Systems"
-                )
+                with dpg.child_window(width=width-20, height=content_height):
+                    safe_add_text("DokumentenKI System", color=[255, 255, 0], size=40)
+                    dpg.add_separator()
+                    dpg.add_spacer(height=20)
+                    safe_add_text(
+                        "Version: 1.0\n\n"
+                        "Dieses Programm verarbeitet Dokumente mit KI.\n\n"
+                        "© 2023 Cybersecurity Systems",
+                        size=30
+                    )
     
     # Initial-Logs
     log_entries.append(f"System gestartet")
@@ -593,9 +740,9 @@ try:
         log_entries.append(f"WARNUNG: Skript {script_path} nicht gefunden!")
     update_log_display()
     
-    # Erstelle viewport
+    # Erstelle viewport (16:9 Größe)
     print("Erstelle Viewport...")
-    dpg.create_viewport(title="DokumentenKI", width=800, height=600)
+    dpg.create_viewport(title="DokumentenKI", width=width, height=height)
     dpg.setup_dearpygui()
     dpg.show_viewport()
     
