@@ -90,24 +90,55 @@ def get_display_size():
     # Fallback auf Standard 16:9 Größe
     return 1600, 900  # 16:9 Standardgröße
 
-# Verbesserte Funktion zum Filtern von Emoji-Zeichen
+# Verbesserte Funktion zum Filtern von Emoji und Sonderzeichen
 def filter_emojis(text):
     if not text:
         return text
         
     try:
-        # Filterung bekannter problematischer Unicode-Zeichen/Emojis
-        # Entfernt Unicode-Zeichen außerhalb des BMP (Basic Multilingual Plane)
-        filtered = ""
+        # Ersetze bekannte Emojis mit lesbarem Text
+        text_replacements = {
+            '🤖': '[ROBOT]',
+            '✅': '[OK]',
+            '❌': '[ERROR]',
+            '⚠️': '[WARNING]',
+            '🔄': '[RELOAD]',
+            '🔍': '[SEARCH]',
+            '📄': '[DOC]',
+            '⏳': '[WAIT]'
+        }
+        
+        # Ersetze bekannte Fortschrittsbalken und ASCII-Art
+        progress_patterns = [
+            # Fortschrittsbalken-Muster
+            (r'\[═+\]', '[==PROGRESS==]'),
+            # Spinner-Symbole
+            (r'[\\|/-](\s*)$', '.')
+        ]
+        
+        # Wende Emoji-Ersetzungen an
+        for emoji, replacement in text_replacements.items():
+            if emoji in text:
+                text = text.replace(emoji, replacement)
+        
+        # Wende reguläre Ausdrücke für Fortschrittsbalken an
+        import re
+        for pattern, replacement in progress_patterns:
+            text = re.sub(pattern, replacement, text)
+        
+        # Allgemeine Unicode-Bereinigung für restliche problematische Zeichen
+        result = ""
         for char in text:
-            # BMP-Zeichen haben Code-Points < 0x10000
-            if ord(char) < 0x10000 and ord(char) != 0x1F916:  # Explizit das Roboter-Emoji ausschließen
-                filtered += char
+            # Grundlegende lateinische Zeichen, Zahlen und gängige Symbole beibehalten
+            if ord(char) < 128:
+                result += char
             else:
-                filtered += "[emoji]"  # Ersetze Emojis durch Text
-        return filtered
-    except:
-        # Fallback: Aggressives Filtern aller potenziell problematischen Zeichen
+                # Ersetze unbekannte Unicode-Zeichen
+                result += '.'
+                
+        return result
+    except Exception as e:
+        # Absoluter Fallback - nur ASCII-Zeichen behalten
         return ''.join(c for c in text if ord(c) < 128)
 
 # Sichere Text-Hinzufügungsfunktion 
