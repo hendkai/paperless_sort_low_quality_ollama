@@ -94,6 +94,30 @@ class OllamaService:
                 logger.error(f"Error sending request to Ollama for document ID {document_id}: {e}")
                 return ''
 
+    def generate_title(self, prompt: str, content_for_id: str) -> str:
+        payload = {"model": self.model, "prompt": prompt}
+        try: 
+            response = requests.post(f"{self.url}{self.endpoint}", json=payload)
+            response.raise_for_status()
+            responses = response.text.strip().split("\n")
+            full_response = ""
+            for res in responses:
+                try:
+                    res_json = json.loads(res)
+                    if 'response' in res_json:
+                        full_response += res_json['response']
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error decoding JSON object for title generation: {e}")
+                    logger.error(f"Response text: {res}")
+            
+            # Bereinige die Antwort von Anführungszeichen oder anderen Formatierungen
+            title = full_response.strip().replace('"', '').replace("'", '')
+            logger.info(f"LLM hat folgenden Titel generiert: '{title}'")
+            return title
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error sending request to Ollama for title generation: {e}")
+            return ''
+
 class EnsembleOllamaService:
     def __init__(self, services: list) -> None:
         self.services = services
@@ -258,32 +282,74 @@ def process_single_document(document: dict, content: str, ensemble_service: Ense
 
 def fetch_document_details(api_url: str, api_token: str, document_id: int) -> dict:
     headers = {'Authorization': f'Token {api_token}'}
-    response = requests.get(f'{api_url}/documents/{document_id}/details', headers=headers)
-    response.raise_for_status()
-    return response.json()
+    try:
+        logger.info(f"Rufe Dokumentdetails ab für ID {document_id}...")
+        response = requests.get(f'{api_url}/documents/{document_id}/', headers=headers)
+        logger.info(f"Details-Antwort Status: {response.status_code}")
+        response.raise_for_status()
+        document_data = response.json()
+        logger.info(f"Dokumentdetails für ID {document_id} erfolgreich abgerufen")
+        return document_data
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Fehler beim Abrufen der Dokumentdetails für ID {document_id}: {e}")
+        if hasattr(e, 'response') and e.response:
+            logger.error(f"Server-Antwort: {e.response.text}")
+        return {}
 
 def generate_new_title(content: str) -> str:
-    logger.info("Beginne Titelgenerierungsprozess...")
+    logger.info("Beginne Titelgenerierungsprozess mit dem ersten LLM-Modell...")
     if not content:
         logger.warning("Kein Inhalt vorhanden für Titelgenerierung. Verwende Standardtitel.")
         return "Untitled Document"
     
-    # Einfache Implementierung: Verwende die ersten Wörter als Titel
-    words = content.split()
-    logger.info(f"Inhalt enthält {len(words)} Wörter.")
+    # Gekürzte Version des Inhalts für die LLM-Anfrage vorbereiten
+    # Begrenzen wir auf die ersten 1000 Zeichen, um die API-Anfrage effizient zu halten
+    truncated_content = content[:1000] if len(content) > 1000 else content
+    logger.info(f"Verwende die ersten {len(truncated_content)} Zeichen des Inhalts für die Titelgenerierung")
     
-    title_words = words[:5] if len(words) > 5 else words
-    title = " ".join(title_words)
-    logger.info(f"Erster Titelentwurf: '{title}'")
+    # Verwende das erste LLM-Modell aus der .env-Datei (MODEL_NAME)
+    title_prompt = f"""
+    Du bist ein Experte für die Erstellung sinnvoller Dokumenttitel.
+    Analysiere den folgenden Inhalt und erstelle einen prägnanten, aussagekräftigen Titel, 
+    der den Inhalt treffend zusammenfasst.
+    Der Titel sollte nicht länger als 100 Zeichen sein.
+    Antworte nur mit dem Titel, ohne Erklärung oder zusätzlichen Text.
     
-    # Begrenze auf 100 Zeichen und entferne Zeilenumbrüche
-    title = title.replace("\n", " ").strip()
-    if len(title) > 100:
-        logger.info(f"Titel zu lang ({len(title)} Zeichen). Kürze auf 100 Zeichen...")
-        title = title[:97] + "..."
+    Inhalt:
+    {truncated_content}
+    """
     
-    logger.info(f"Finaler generierter Titel: '{title}'")
-    return title
+    logger.info("Sende Anfrage an LLM-Modell für Titelgenerierung...")
+    
+    try:
+        # Verwende das erste Modell für die Titelgenerierung
+        ollama_service = OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME)
+        title = ollama_service.generate_title(title_prompt, truncated_content)
+        
+        # Fallback, falls das Modell keinen Titel zurückgibt
+        if not title or len(title.strip()) == 0:
+            logger.warning("LLM-Modell hat keinen Titel zurückgegeben. Verwende Fallback-Methode.")
+            words = content.split()
+            title_words = words[:5] if len(words) > 5 else words
+            title = " ".join(title_words)
+        
+        # Begrenze auf 100 Zeichen und entferne Zeilenumbrüche
+        title = title.replace("\n", " ").strip()
+        if len(title) > 100:
+            logger.info(f"Titel zu lang ({len(title)} Zeichen). Kürze auf 100 Zeichen...")
+            title = title[:97] + "..."
+        
+        logger.info(f"Finaler generierter Titel: '{title}'")
+        return title
+    except Exception as e:
+        logger.error(f"Fehler bei der LLM-Titelgenerierung: {e}")
+        # Fallback-Methode im Fehlerfall
+        words = content.split()
+        title_words = words[:5] if len(words) > 5 else words
+        title = " ".join(title_words)
+        title = title.replace("\n", " ").strip()[:100]
+        logger.info(f"Fallback-Titel generiert: '{title}'")
+        return title
 
 def update_document_title(api_url: str, api_token: str, document_id: int, new_title: str, csrf_token: str, old_title: str) -> None:
     logger.info(f"Beginne API-Aufruf zur Umbenennung von Dokument {document_id}...")
@@ -297,15 +363,40 @@ def update_document_title(api_url: str, api_token: str, document_id: int, new_ti
     payload = {"title": new_title}
     
     try:
+        logger.info(f"Sende PATCH-Anfrage an: {api_url}/documents/{document_id}/")
+        logger.info(f"Headers: {headers}")
+        logger.info(f"Payload: {payload}")
+        
         response = requests.patch(f'{api_url}/documents/{document_id}/', json=payload, headers=headers)
-        response.raise_for_status()
-        logger.info(f"API-Antwort: Status {response.status_code}")
-        logger.info(f"Dokument ID {document_id} erfolgreich umbenannt von '{old_title}' zu '{new_title}'")
-        print(f"Dokument ID {document_id} wurde umbenannt von '{old_title}' zu '{new_title}'")
+        
+        logger.info(f"API-Antwort Status: {response.status_code}")
+        logger.info(f"API-Antwort Headers: {response.headers}")
+        logger.info(f"API-Antwort Text: {response.text[:500]}...")  # Nur die ersten 500 Zeichen
+        
+        response.raise_for_status()  # Dies wird einen Fehler auslösen, wenn der Status-Code nicht erfolgreich ist
+        
+        # Prüfen, ob die Umbenennung erfolgreich war
+        details = fetch_document_details(api_url, api_token, document_id)
+        current_title = details.get('title', '')
+        
+        # Immer den aktuellen Titel nach der Änderung protokollieren
+        logger.info(f"Aktueller Titel nach der Änderung: '{current_title}'")
+        
+        if current_title == new_title:
+            logger.info(f"✅ ERFOLG: Dokument ID {document_id} wurde erfolgreich umbenannt von '{old_title}' zu '{current_title}'")
+            print(f"✅ Dokument ID {document_id} wurde erfolgreich umbenannt von '{old_title}' zu '{current_title}'")
+        else:
+            logger.warning(f"⚠️ WARNUNG: Titel wurde möglicherweise nicht aktualisiert. Gewünschter neuer Titel: '{new_title}', Aktueller Titel: '{current_title}'")
+            print(f"⚠️ Umbenennung möglicherweise fehlgeschlagen. Gewünschter Titel: '{new_title}', Aktueller Titel: '{current_title}'")
+            
     except requests.exceptions.RequestException as e:
-        logger.error(f"Fehler beim API-Aufruf zur Umbenennung: {e}")
+        logger.error(f"❌ FEHLER beim API-Aufruf zur Umbenennung: {e}")
         if hasattr(e, 'response') and e.response:
+            logger.error(f"Server-Antwort: Status {e.response.status_code}")
             logger.error(f"Antwort vom Server: {e.response.text}")
+        else:
+            logger.error("Keine Antwort vom Server erhalten (Verbindungsfehler)")
+        print(f"❌ Fehler bei der Umbenennung von Dokument {document_id}: {e}")
         raise
 
 def main() -> None:
