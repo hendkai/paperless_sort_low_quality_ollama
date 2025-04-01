@@ -198,36 +198,34 @@ def filter_emojis(text):
         return ""
     
     try:
-        # Entferne ANSI-Escape-Sequenzen (Farbcodes etc.)
+        # Entferne ANSI-Escape-Sequenzen
         import re
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         text = ansi_escape.sub('', text)
         
-        # Ersetze Spinner-Zeichen
-        spinner_chars = {
-            '|': '|',
+        # Ersetze Fortschrittsbalken-Zeichen
+        progress_chars = {
+            '█': '#',  # Gefüllter Block
+            '░': '-',  # Leerer Block
+            '|': '|',  # Spinner
             '/': '/',
             '-': '-',
-            '\\': '\\',
-            '█': '#',
-            '▓': '#',
-            '▒': '#',
-            '░': '#',
+            '\\': '\\'
         }
         
-        # Filtere Emojis und andere problematische Zeichen
+        # Filtere Text
         filtered_text = ""
         i = 0
         while i < len(text):
             char = text[i]
             
-            # Behandle Spinner-Zeichen
-            if char in spinner_chars:
-                filtered_text += spinner_chars[char]
+            # Behandle Fortschrittsbalken und Spinner
+            if char in progress_chars:
+                filtered_text += progress_chars[char]
                 i += 1
                 continue
-                
-            # Behandle Emojis und andere Unicode-Zeichen
+            
+            # Behandle Emojis und andere Zeichen
             if ord(char) < 127:  # ASCII-Zeichen
                 filtered_text += char
             else:
@@ -248,23 +246,6 @@ def filter_emojis(text):
                     filtered_text += "[!]"
                     i += 2
                     continue
-                # Ersetze Fortschrittsbalken-Zeichen
-                elif text[i:i+3] == "[█]":
-                    filtered_text += "[#]"
-                    i += 3
-                    continue
-                elif text[i:i+3] == "[▓]":
-                    filtered_text += "[#]"
-                    i += 3
-                    continue
-                elif text[i:i+3] == "[▒]":
-                    filtered_text += "[-]"
-                    i += 3
-                    continue
-                elif text[i:i+3] == "[░]":
-                    filtered_text += "[ ]"
-                    i += 3
-                    continue
             i += 1
         
         # Entferne doppelte Leerzeichen
@@ -273,54 +254,63 @@ def filter_emojis(text):
         return filtered_text
     except Exception as e:
         print(f"Error while filtering emojis: {str(e)}")
-        return text  # Im Fehlerfall den Originaltext zurückgeben
+        return text
 
 # Funktion zum Extrahieren von Dokumenteninformationen aus Logzeilen
 def extract_document_info(line):
     try:
         import re
         
-        # Suche nach Dokumenten-ID
+        # Search for document ID
         doc_id_match = re.search(r"Document ID[:\s]+(\d+)", line)
         if not doc_id_match:
             doc_id_match = re.search(r"Document[:\s]+(\d+)", line)
+            if not doc_id_match:
+                doc_id_match = re.search(r"Dokument[:\s]+(\d+)", line)
         
         if doc_id_match:
             doc_id = int(doc_id_match.group(1))
             
-            # Suche nach Fortschritt (1/4, 2/4, 3/4, 4/4)
-            progress_match = re.search(r"processed \((\d+)/(\d+)\)", line)
+            # Search for progress (x/y format)
+            progress_match = re.search(r"verarbeitet \((\d+)/(\d+)\)", line)
+            if not progress_match:
+                progress_match = re.search(r"processed \((\d+)/(\d+)\)", line)
+            
             progress = None
             if progress_match:
                 current = int(progress_match.group(1))
                 total = int(progress_match.group(2))
                 progress = current / total
             
-            # Suche nach Status
+            # Search for status
             status = None
-            if "Quality assessment" in line:
-                status = "Quality assessment"
-            elif "marked as 'Low Quality'" in line:
+            if "Quality assessment" in line or "Qualitätsbewertung" in line:
+                status = "Quality Assessment"
+            elif "marked as 'Low Quality'" in line or "als 'Low Quality' markiert" in line:
                 status = "Marked as Low Quality"
-            elif "marked as 'High Quality'" in line:
+            elif "marked as 'High Quality'" in line or "als 'High Quality' markiert" in line:
                 status = "Marked as High Quality"
-            elif "Renaming process" in line:
+            elif "Renaming process" in line or "Umbenennungsprozess" in line:
                 status = "Renaming"
-            elif "Processing completed" in line:
+            elif "Processing completed" in line or "Verarbeitung abgeschlossen" in line:
                 status = "Completed"
+            elif "verarbeitet" in line or "processed" in line:
+                status = "Processing"
             
-            # Suche nach Titel
-            title_match = re.search(r"Title: '([^']+)'", line)
+            # Search for title
+            title_match = re.search(r"Title: '([^']+)'|Titel: '([^']+)'", line)
             title = None
             if title_match:
-                title = title_match.group(1)
+                title = title_match.group(1) or title_match.group(2)
             
-            return {
-                "doc_id": doc_id,
-                "progress": progress,
-                "status": status,
-                "title": title
-            }
+            # If we found any information, return it
+            if any([progress is not None, status is not None, title is not None]):
+                return {
+                    "doc_id": doc_id,
+                    "progress": progress,
+                    "status": status,
+                    "title": title
+                }
         
         return None
     except Exception as e:
@@ -331,7 +321,7 @@ def extract_document_info(line):
 # Funktion zum Aktualisieren des Fortschrittsbalkens für ein Dokument
 def update_document_progress(doc_id, progress, status=None, title=None):
     try:
-        # Speichere den Status
+        # Save status
         if doc_id not in document_statuses:
             document_statuses[doc_id] = {"progress": 0, "status": "Initializing...", "title": "Unknown"}
         
@@ -342,27 +332,22 @@ def update_document_progress(doc_id, progress, status=None, title=None):
         if title is not None:
             document_statuses[doc_id]["title"] = title
         
-        # Finde den Panel-Index für dieses Dokument
+        # Find panel index for this document
         panel_index = None
         for i in range(1, 5):
             if dpg.does_item_exist(f"doc_id_{i}") and dpg.get_value(f"doc_id_{i}") == str(doc_id):
                 panel_index = i
                 break
         
-        # Wenn kein Panel gefunden, suche ein freies Panel
+        # If no panel found, find a free panel
         if panel_index is None:
-            for i in range(1, num_parallel_docs + 1):  # Nur bis zur konfigurierten Anzahl suchen
+            for i in range(1, num_parallel_docs + 1):
                 if dpg.does_item_exist(f"doc_id_{i}") and (not dpg.get_value(f"doc_id_{i}") or dpg.get_value(f"doc_id_{i}") == ""):
                     panel_index = i
                     dpg.set_value(f"doc_id_{i}", str(doc_id))
                     break
         
-        # Wenn immer noch kein Panel gefunden, nehme das erste Panel
-        if panel_index is None and num_parallel_docs > 0 and dpg.does_item_exist("doc_id_1"):
-            panel_index = 1
-            dpg.set_value("doc_id_1", str(doc_id))
-        
-        # Aktualisiere das Panel, wenn gefunden
+        # Update panel if found
         if panel_index is not None:
             safe_configure_item(f"doc_progress_{panel_index}", default_value=document_statuses[doc_id]["progress"])
             if dpg.does_item_exist(f"doc_status_{panel_index}"):
@@ -370,9 +355,8 @@ def update_document_progress(doc_id, progress, status=None, title=None):
             if dpg.does_item_exist(f"doc_title_{panel_index}"):
                 dpg.set_value(f"doc_title_{panel_index}", document_statuses[doc_id]["title"])
             
-            # Aktualisiere ASCII-Art basierend auf dem Status
+            # Update ASCII art based on status
             if dpg.does_item_exist(f"ascii_art_{panel_index}"):
-                # Prüfe, ob progress None ist
                 if progress is not None and progress < 1.0:
                     dpg.set_value(f"ascii_art_{panel_index}", ASCII_FACTORY_PROCESSING)
                 elif progress is not None and progress >= 1.0:
@@ -496,23 +480,23 @@ def update_system_info():
     
     try:
         # CPU-Auslastung
-        cpu_percent = psutil.cpu_percent()
-        if dpg.does_item_exist("cpu_usage"):
-            dpg.set_value("cpu_usage", f"CPU: {cpu_percent:.1f}%")
+        cpu_percent = psutil.cpu_percent(interval=1)
+        if dpg.does_item_exist("cpu_text"):
+            dpg.set_value("cpu_text", f"CPU: {cpu_percent:.1f}%")
         
         # RAM-Auslastung
         ram = psutil.virtual_memory()
         ram_used_gb = ram.used / (1024 ** 3)
         ram_total_gb = ram.total / (1024 ** 3)
-        if dpg.does_item_exist("ram_usage"):
-            dpg.set_value("ram_usage", f"RAM: {ram_used_gb:.1f} GB / {ram_total_gb:.1f} GB")
+        if dpg.does_item_exist("ram_text"):
+            dpg.set_value("ram_text", f"RAM: {ram_used_gb:.1f} GB / {ram_total_gb:.1f} GB")
         
         # Festplattennutzung
         disk = psutil.disk_usage('/')
         disk_used_gb = disk.used / (1024 ** 3)
         disk_total_gb = disk.total / (1024 ** 3)
-        if dpg.does_item_exist("disk_usage"):
-            dpg.set_value("disk_usage", f"Disk: {disk_used_gb:.1f} GB / {disk_total_gb:.1f} GB")
+        if dpg.does_item_exist("disk_text"):
+            dpg.set_value("disk_text", f"Disk: {disk_used_gb:.1f} GB / {disk_total_gb:.1f} GB")
     except Exception as e:
         print(f"Error while updating system information: {str(e)}")
 
@@ -771,7 +755,9 @@ try:
                         if system_monitoring:
                             safe_add_text("SYSTEM INFO", color=[255, 255, 0])
                             dpg.add_separator()
-                            safe_add_text("CPU: 0%\nRAM: 0%", tag="system_info")
+                            safe_add_text("CPU: 0%", tag="cpu_text")
+                            safe_add_text("RAM: 0 GB / 0 GB", tag="ram_text")
+                            safe_add_text("Disk: 0 GB / 0 GB", tag="disk_text")
                         
                         # Diagnose-Bereich
                         safe_add_text("DIAGNOSTICS", color=[255, 255, 0])
@@ -1188,3 +1174,9 @@ try:
         dpg.set_value("parallel_docs_slider", num_parallel_docs)
 except Exception as e:
     print(f"Error setting slider value: {str(e)}")
+
+# Timer für regelmäßige Updates
+def update_timer_callback(sender, app_data):
+    update_system_info()
+
+dpg.create_timer(callback=update_timer_callback, time=1.0)
