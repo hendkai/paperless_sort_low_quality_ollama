@@ -67,7 +67,7 @@ class OllamaService:
 
     def evaluate_content(self, content: str, prompt: str, document_id: int) -> str:
         payload = {"model": self.model, "prompt": f"{prompt}{content}"}
-        try:
+        try: 
             response = requests.post(f"{self.url}{self.endpoint}", json=payload)
             response.raise_for_status()
             responses = response.text.strip().split("\n")
@@ -209,34 +209,51 @@ def process_documents(documents: list, api_url: str, api_token: str, ignore_alre
             future.result()
 
 def process_single_document(document: dict, content: str, ensemble_service: EnsembleOllamaService, api_url: str, api_token: str, csrf_token: str) -> None:
-    quality_response, consensus_reached = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document['id'])
-    logger.info(f"Ollama response for document ID {document['id']}: {quality_response}")
+    document_id = document['id']
+    logger.info(f"==== Verarbeite Dokument ID: {document_id} ====")
+    logger.info(f"Aktueller Titel: '{document.get('title', 'Kein Titel')}'")
+    logger.info(f"Inhaltslänge: {len(content)} Zeichen")
+    
+    quality_response, consensus_reached = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document_id)
+    logger.info(f"Ollama Qualitätsbewertung für Dokument ID {document_id}: {quality_response}")
+    logger.info(f"Konsensus erreicht: {consensus_reached}")
 
     if consensus_reached:
         if quality_response.lower() == 'low quality':
             try:
-                tag_document(document['id'], api_url, api_token, LOW_QUALITY_TAG_ID, csrf_token)
-                logger.info(f"Document ID {document['id']} tagged as low quality.")
-                print(f"The AI models decided to rank the file as low quality.")
+                logger.info(f"Dokument {document_id} wird als 'Low Quality' markiert (Tag ID: {LOW_QUALITY_TAG_ID})")
+                tag_document(document_id, api_url, api_token, LOW_QUALITY_TAG_ID, csrf_token)
+                logger.info(f"Dokument ID {document_id} erfolgreich als 'Low Quality' markiert.")
+                print(f"Die KI-Modelle haben entschieden, die Datei als 'Low Quality' einzustufen.")
             except requests.exceptions.HTTPError as e:
-                logger.error(f"Error tagging document ID {document['id']} as low quality: {e}")
+                logger.error(f"Fehler beim Markieren des Dokuments ID {document_id} als 'Low Quality': {e}")
         elif quality_response.lower() == 'high quality':
             try:
-                tag_document(document['id'], api_url, api_token, HIGH_QUALITY_TAG_ID, csrf_token)
-                logger.info(f"Document ID {document['id']} tagged as high quality.")
-                print(f"The AI models decided to rank the file as high quality.")
+                logger.info(f"Dokument {document_id} wird als 'High Quality' markiert (Tag ID: {HIGH_QUALITY_TAG_ID})")
+                tag_document(document_id, api_url, api_token, HIGH_QUALITY_TAG_ID, csrf_token)
+                logger.info(f"Dokument ID {document_id} erfolgreich als 'High Quality' markiert.")
+                print(f"Die KI-Modelle haben entschieden, die Datei als 'High Quality' einzustufen.")
+                
+                # Dokument sofort umbenennen, wenn es als high quality eingestuft wurde
+                logger.info(f"Beginne Umbenennungsprozess für High-Quality-Dokument {document_id}...")
+                details = fetch_document_details(api_url, api_token, document_id)
+                old_title = details.get('title', '')
+                logger.info(f"Aktueller Titel vor Umbenennung: '{old_title}'")
+                
+                logger.info(f"Generiere neuen Titel basierend auf Inhalt (Länge: {len(details.get('content', ''))} Zeichen)")
+                new_title = generate_new_title(details.get('content', ''))
+                logger.info(f"Neuer generierter Titel: '{new_title}'")
+                
+                update_document_title(api_url, api_token, document_id, new_title, csrf_token, old_title)
+                logger.info(f"Umbenennung für Dokument {document_id} abgeschlossen!")
+                
             except requests.exceptions.HTTPError as e:
-                logger.error(f"Error tagging document ID {document['id']} as high quality: {e}")
+                logger.error(f"Fehler beim Markieren oder Umbenennen des Dokuments ID {document_id}: {e}")
     else:
-        logger.info(f"The AI models could not find a consensus for document ID {document['id']}. The document will be skipped.")
-        print(f"The AI models could not find a consensus for document ID {document['id']}. The document will be skipped.")
+        logger.warning(f"Die KI-Modelle konnten keinen Konsensus für Dokument ID {document_id} finden. Das Dokument wird übersprungen.")
+        print(f"Die KI-Modelle konnten keinen Konsensus für Dokument ID {document_id} finden. Das Dokument wird übersprungen.")
 
-    if RENAME_DOCUMENTS:
-        details = fetch_document_details(api_url, api_token, document['id'])
-        old_title = details.get('title', '')
-        new_title = generate_new_title(details.get('content', ''))
-        update_document_title(api_url, api_token, document['id'], new_title, csrf_token, old_title)
-
+    logger.info(f"==== Verarbeitung von Dokument ID: {document_id} abgeschlossen ====\n")
     time.sleep(1)  # Add delay between requests
 
 def fetch_document_details(api_url: str, api_token: str, document_id: int) -> dict:
@@ -246,20 +263,50 @@ def fetch_document_details(api_url: str, api_token: str, document_id: int) -> di
     return response.json()
 
 def generate_new_title(content: str) -> str:
-    # Placeholder for title generation logic based on content
-    return "New Title Based on Content"
+    logger.info("Beginne Titelgenerierungsprozess...")
+    if not content:
+        logger.warning("Kein Inhalt vorhanden für Titelgenerierung. Verwende Standardtitel.")
+        return "Untitled Document"
+    
+    # Einfache Implementierung: Verwende die ersten Wörter als Titel
+    words = content.split()
+    logger.info(f"Inhalt enthält {len(words)} Wörter.")
+    
+    title_words = words[:5] if len(words) > 5 else words
+    title = " ".join(title_words)
+    logger.info(f"Erster Titelentwurf: '{title}'")
+    
+    # Begrenze auf 100 Zeichen und entferne Zeilenumbrüche
+    title = title.replace("\n", " ").strip()
+    if len(title) > 100:
+        logger.info(f"Titel zu lang ({len(title)} Zeichen). Kürze auf 100 Zeichen...")
+        title = title[:97] + "..."
+    
+    logger.info(f"Finaler generierter Titel: '{title}'")
+    return title
 
 def update_document_title(api_url: str, api_token: str, document_id: int, new_title: str, csrf_token: str, old_title: str) -> None:
+    logger.info(f"Beginne API-Aufruf zur Umbenennung von Dokument {document_id}...")
+    logger.info(f"Ändere Titel von '{old_title}' zu '{new_title}'")
+    
     headers = {
         'Authorization': f'Token {api_token}',
         'X-CSRFToken': csrf_token,
         'Content-Type': 'application/json'
     }
     payload = {"title": new_title}
-    response = requests.patch(f'{api_url}/documents/{document_id}/', json=payload, headers=headers)
-    response.raise_for_status()
-    logger.info(f"Document ID {document_id} renamed from '{old_title}' to '{new_title}'")
-    print(f"Document ID {document_id} renamed from '{old_title}' to '{new_title}'")
+    
+    try:
+        response = requests.patch(f'{api_url}/documents/{document_id}/', json=payload, headers=headers)
+        response.raise_for_status()
+        logger.info(f"API-Antwort: Status {response.status_code}")
+        logger.info(f"Dokument ID {document_id} erfolgreich umbenannt von '{old_title}' zu '{new_title}'")
+        print(f"Dokument ID {document_id} wurde umbenannt von '{old_title}' zu '{new_title}'")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Fehler beim API-Aufruf zur Umbenennung: {e}")
+        if hasattr(e, 'response') and e.response:
+            logger.error(f"Antwort vom Server: {e.response.text}")
+        raise
 
 def main() -> None:
     print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
