@@ -218,19 +218,34 @@ def process_documents(documents: list, api_url: str, api_token: str, ignore_alre
         services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, THIRD_MODEL_NAME))
     ensemble_service = EnsembleOllamaService(services)
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = []
-        for document in documents:
-            content = document.get('content', '')
-            if ignore_already_tagged and document.get('tags'):
-                logger.info(f"Skipping document ID {document['id']} as it is already tagged.")
-                continue
-            futures.append(executor.submit(process_single_document, document, content, ensemble_service, api_url, api_token, csrf_token))
+    # Sequentielle Verarbeitung statt mit ThreadPoolExecutor
+    total_documents = len([doc for doc in documents if not (ignore_already_tagged and doc.get('tags'))])
+    processed_count = 0
+    
+    print(f"{Fore.CYAN}🤖 Starte sequentielle Verarbeitung von {total_documents} Dokumenten...{Style.RESET_ALL}")
+    
+    for document in documents:
+        content = document.get('content', '')
+        if ignore_already_tagged and document.get('tags'):
+            logger.info(f"Überspringe Dokument ID {document['id']}, da es bereits markiert ist.")
+            continue
         
-        for future in tqdm(futures, desc=f"{Fore.CYAN}🤖 Processing Documents{Style.RESET_ALL}", 
-                          unit="doc", bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
-                          colour='green'):
-            future.result()
+        # Fortschrittsanzeige aktualisieren
+        processed_count += 1
+        print(f"{Fore.CYAN}🤖 Verarbeite Dokument {processed_count}/{total_documents} (ID: {document['id']}){Style.RESET_ALL}")
+        
+        # Dokument vollständig verarbeiten, bevor mit dem nächsten fortgefahren wird
+        try:
+            process_single_document(document, content, ensemble_service, api_url, api_token, csrf_token)
+            print(f"{Fore.GREEN}✅ Dokument {document['id']} verarbeitet ({processed_count}/{total_documents}){Style.RESET_ALL}")
+        except Exception as e:
+            logger.error(f"Fehler bei der Verarbeitung von Dokument {document['id']}: {e}")
+            print(f"{Fore.RED}❌ Fehler bei Dokument {document['id']}: {str(e)[:100]}...{Style.RESET_ALL}")
+        
+        # Klare visuelle Trennung zwischen Dokumenten in der Konsole
+        print(f"{Fore.YELLOW}{'=' * 80}{Style.RESET_ALL}\n")
+    
+    print(f"{Fore.GREEN}🤖 Verarbeitung aller Dokumente abgeschlossen!{Style.RESET_ALL}")
 
 def process_single_document(document: dict, content: str, ensemble_service: EnsembleOllamaService, api_url: str, api_token: str, csrf_token: str) -> None:
     document_id = document['id']
