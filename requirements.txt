@@ -1,6 +1,25 @@
-requests
-tqdm
-python-dotenv
-tenacity
-colorama
-concurrent.futures
+# Core dependencies
+requests>=2.28.1
+python-dotenv>=1.0.0
+
+# Console formatting and visualization
+colorama>=0.4.6
+rich>=13.3.5
+tqdm>=4.65.0
+
+# Logging enhancements
+loguru>=0.7.0
+
+# Error handling and debugging
+sentry-sdk>=1.28.0
+
+# Date/time processing
+pytz>=2023.3
+
+# Optional: LLM-specific libraries
+ollama>=0.1.0
+
+# Development tools (uncomment if needed)
+# pytest>=7.3.1
+# black>=23.3.0
+# flake8>=6.0.0

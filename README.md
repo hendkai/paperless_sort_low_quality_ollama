@@ -1,110 +1,132 @@
-# 📄 Document Quality Checker
+# Document Quality Assessment and Processing Tool
 
-This script is designed to fetch and analyze documents from a Paperless server, tagging them as low or high quality based on a quality check using Ollama. It offers the flexibility to ignore already tagged documents during the analysis, making it efficient and user-friendly.
+A powerful tool that leverages Large Language Models (LLMs) to automatically evaluate document quality, tag documents, and intelligently rename high-quality content with contextually relevant titles.
+
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Python](https://img.shields.io/badge/python-3.8%2B-brightgreen)
+
+## 📋 Table of Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Setup and Installation](#setup-and-installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Processing Flow](#processing-flow)
+- [Logging and Monitoring](#logging-and-monitoring)
+- [Advanced Options](#advanced-options)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [License](#license)
 
 ## ✨ Features
 
-- 📥 **Fetch Documents**: Retrieve documents from a Paperless server based on a customizable search query.
-- 🔍 **Analyze Content**: Utilize Ollama to assess the quality of document content.
-- 🏷️ **Tag Documents**: Automatically tag documents as low or high quality based on the analysis results.
-- ⚙️ **Configurable Settings**: User-configurable server URLs for both Paperless and Ollama, allowing for seamless integration with your environment.
-- 🚫 **Ignore Tagged Documents**: Option to skip documents that have already been tagged, enhancing processing efficiency.
-- ⚡ **Efficient Processing**: Detailed logging ensures efficient processing and easy troubleshooting.
-- 🖥️ **Interactive CLI**: Implemented an interactive command-line interface (CLI) with options and menus for better user interaction.
-- 📊 **Detailed Logging and Reporting**: Detailed logging of actions and events during script execution and a summary report generated at the end of the script.
+- **AI-Powered Quality Assessment**: Utilizes up to three LLM models to evaluate document quality
+- **Consensus-Based Decision Making**: Makes reliable quality judgments by aggregating multiple AI opinions
+- **Automatic Document Tagging**: Tags documents as high or low quality based on AI evaluation
+- **Intelligent Title Generation**: Automatically creates meaningful titles for high-quality documents
+- **Sequential Processing**: Processes documents one at a time for maximum reliability and clarity
+- **Comprehensive Logging**: Detailed logs for monitoring and debugging
+- **Progress Visualization**: Clear console output showing processing status
+- **Error Handling**: Robust error recovery to continue processing despite individual failures
 
-## 🛠️ Requirements
+## 🏗️ Architecture
 
-To run this script, ensure you have the following prerequisites installed:
+The tool follows a sequential processing architecture:
 
-- Python 3.x
+1. **Document Retrieval**: Fetches documents from the configured API
+2. **Quality Assessment**: Uses multiple LLM models for quality evaluation
+3. **Consensus Determination**: Aggregates model opinions to reach a decision
+4. **Tagging**: Applies appropriate tags based on quality assessment
+5. **Title Generation**: For high-quality documents, generates meaningful titles
+6. **Renaming**: Updates document titles in the system
 
-## 📦 Installation
+## 🚀 Setup and Installation
 
-Follow these steps to set up the Document Quality Checker:
+### Prerequisites
 
-1. **Clone the Repository**:
-    ```sh
-    git clone https://github.com/hendkai/paperless_sort_low_quality_ollama
-    cd document-quality-checker
-    ```
+- Python 3.8 or higher
+- Ollama installed and running locally or on an accessible server
+- Access credentials for your document management API
 
-2. **Install Required Libraries**:
-    ```sh
-    pip install -r requirements.txt
-    ```
+### Installation Steps
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/yourusername/document-quality-tool.git
+   cd document-quality-tool
+   ```
+
+2. Create and activate a virtual environment (recommended):
+   ```bash
+   python -m venv venv
+   # On Windows
+   venv\Scripts\activate
+   # On Linux/Mac
+   source venv/bin/activate
+   ```
+
+3. Install required packages:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Create a `.env` file with your configuration (see [Configuration](#configuration))
+
+5. Verify Ollama is running:
+   ```bash
+   curl http://127.0.0.1:11434/api/version
+   ```
 
 ## ⚙️ Configuration
 
-Before running the script, configure the necessary variables to match your environment. Edit the following settings in the script:
+Create a `.env` file in the project root with the following variables:
 
-- `API_URL`: The URL of your Paperless server.
-- `API_TOKEN`: Your Paperless API token for authentication.
-- `OLLAMA_URL`: The URL of your Ollama server.
-- `OLLAMA_ENDPOINT`: The specific endpoint for Ollama's quality check API.
-- `PROMPT_DEFINITION`: The prompt definition to be used with Ollama's API for quality assessment.
-- `LOW_QUALITY_TAG_ID`: The tag ID for documents classified as low quality.
-- `HIGH_QUALITY_TAG_ID`: The tag ID for documents classified as high quality.
-- `MODEL_NAME`: The name of the model to be used with Ollama for analysis.
-- `SECOND_MODEL_NAME`: The name of the second model to be used with Ollama for analysis.
-- `MAX_DOCUMENTS`: The maximum number of documents to process in a single run.
-- `IGNORE_ALREADY_TAGGED`: Whether to ignore already tagged documents.
-- `CONFIRM_PROCESS`: Whether to require confirmation before processing.
+```
+# Complete URL to your Paperless-ngx API
+# Example: http://192.168.2.10:8000/api
+API_URL=http://your.paperless.instance:8000/api
 
-### Setting Environment Variables
+# Your Paperless-ngx API Token
+# Can be found in: Paperless web interface -> Settings -> API Token
+API_TOKEN=your_api_token_here
 
-To set environment variables, follow these steps:
+# URL to your Ollama server
+# Default port is 11434
+OLLAMA_URL=http://your.ollama.server:11434
 
-1. **Copy `.env.example` to `.env`**:
-    ```sh
-    cp .env.example .env
-    ```
+# Endpoint for Ollama API requests
+# Default is /api/generate for text generation
+OLLAMA_ENDPOINT=/api/generate
 
-2. **Update the values in `.env`**:
-    Open the `.env` file in a text editor and update the values to match your environment.
+# Name of the AI model to use
+# Available models can be listed using 'ollama list'
+MODEL_NAME=llama3.2
 
-3. **Ensure `.env` is not committed to version control**:
-    Check your `.gitignore` file to ensure that `.env` is listed, preventing it from being committed to version control.
+# Name of the second AI model to use
+# Available models can be listed using 'ollama list'
+SECOND_MODEL_NAME=mistral
 
-### Creating and Configuring Tags on Paperless-ngx
+# Tag ID for low quality documents in Paperless-ngx
+# Find the ID in Paperless interface under Tags
+LOW_QUALITY_TAG_ID=1
 
-Before running the script, ensure that the tags for low and high quality documents are created and configured in your Paperless-ngx instance:
+# Tag ID for high quality documents in Paperless-ngx
+# Find the ID in Paperless interface under Tags
+HIGH_QUALITY_TAG_ID=2
 
-1. **Log in to Paperless-ngx**:
-   - Open your web browser and navigate to your Paperless-ngx instance.
-   - Log in with your credentials.
+# Maximum number of documents to process
+# Set to 0 for unlimited
+MAX_DOCUMENTS=1000
 
-2. **Create Tags**:
-   - Go to the **Tags** section in the Paperless-ngx interface.
-   - Click on **Add Tag**.
-   - Create a tag named "LOW_QUALITY".
-   - In the dropdown, set **Assignment Algorithm** to "Disable automatic assignment".
-   - Create another tag named "HIGH_QUALITY" and set the same option.
+# Whether to ignore already tagged documents
+# Possible values: yes/no
+IGNORE_ALREADY_TAGGED=yes
 
-3. **Determine Tag IDs**:
-   - After creating the tags, click on the tag name (e.g., "HIGH_QUALITY").
-   - Click on the **Documents** button next to the tag name.
-   - This will filter all documents with the tag and update the URL in your browser.
-   - The URL will look something like `http://192.168.1.204:8000/documents?tags__id__all=2&sort=created&reverse=1&page=1`.
-   - The tag ID for "HIGH_QUALITY" is the number after `tags__id__all=` (e.g., `2`).
-   - Repeat the process for the "LOW_QUALITY" tag to determine its ID.
-
-4. **Update Configuration**:
-   - Update the `LOW_QUALITY_TAG_ID` and `HIGH_QUALITY_TAG_ID` in the script configuration with the determined IDs.
-
-### Obtaining the Paperless-ngx API Token
-
-To obtain the API token required for authentication:
-
-1. **Log in to Paperless-ngx**:
-   - Open your web browser and navigate to your Paperless-ngx instance.
-   - Log in with your credentials.
-
-2. **Generate API Token**:
-   - Go to the **Settings** section.
-   - Navigate to the **API** tab.
-   - Click on **Generate Token**.
-   - Copy the generated token for use in the script configuration.
+# Whether to require confirmation before processing
+# Possible values: yes/no
+CONFIRM_PROCESS=yes
+```
 
 ## 🚀 Usage
 
