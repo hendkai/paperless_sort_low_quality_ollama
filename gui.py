@@ -19,6 +19,69 @@ current_document_name = "Keine Datei ausgewählt"  # Name des aktuellen Dokument
 preview_support = False  # Initialisiere die Variable hier!
 debug_mode = True  # Debug-Modus für ausführliche Logs
 
+# Vereinfachte ASCII-Art für die Dokumentenfabrik (nur grundlegende ASCII-Zeichen)
+ASCII_FACTORY_IDLE = """
+    +-------------------------------+
+    |      DOKUMENTEN-VERARBEITUNG  |
+    +-------------------------------+
+    |                               |
+    |         +---+      +---+      |
+    |         |   |      |   |      |
+    |         +---+      +---+      |
+    |           |          |        |
+    |     +---------------------+   |
+    |     |                     |   |
+    |     |    BEREIT FÜR       |   |
+    |     |   VERARBEITUNG      |   |
+    |     |                     |   |
+    |     +---------------------+   |
+    |                               |
+    |                               |
+    |                               |
+    +-------------------------------+
+"""
+
+ASCII_FACTORY_PROCESSING = """
+    +-------------------------------+
+    |      DOKUMENTEN-VERARBEITUNG  |
+    +-------------------------------+
+    |         +---+      +---+      |
+    |    +--->| # |--+   | # |<--+  |
+    |    |    +---+  |   +---+   |  |
+    |    |           +-------+   |  |
+    |    |                   v   |  |
+    |    |    +---------------+  |  |
+    |    |    | # # # # # # # |  |  |
+    |    |    | # # # # # # # |  |  |
+    |    |    | # # # # # # # |  |  |
+    |    |    +---------------+  |  |
+    |    |            |          |  |
+    |    +------------+----------+  |
+    |                               |
+    +-------------------------------+
+"""
+
+ASCII_FACTORY_COMPLETE = """
+    +-------------------------------+
+    |      DOKUMENTEN-VERARBEITUNG  |
+    +-------------------------------+
+    |                               |
+    |         +---+      +---+      |
+    |         |   |      |   |      |
+    |         +---+      +---+      |
+    |                               |
+    |     +---------------------+   |
+    |     |                     |   |
+    |     |    VERARBEITUNG     |   |
+    |     |    ABGESCHLOSSEN    |   |
+    |     |                     |   |
+    |     +---------------------+   |
+    |              | |              |
+    |              v v              |
+    |         [DOKUMENTE]           |
+    +-------------------------------+
+"""
+
 # Hilfsfunktionen für Fehlerprotokollierung
 def log_error(message, exception=None):
     try:
@@ -487,10 +550,56 @@ try:
             dpg.set_value("status_text", "Status: Bereit")
             update_log_display()
     
-    # Aktualisiere Log-Anzeige mit Emoji-Filterung
+    # Funktion zum Aktualisieren der ASCII-Art basierend auf dem Status
+    def update_ascii_art(status="idle", document_info=None):
+        if status == "processing":
+            # Zeige die Verarbeitungs-Animation
+            ascii_art = ASCII_FACTORY_PROCESSING
+            
+            # Füge Dokumenteninformationen hinzu, wenn verfügbar
+            if document_info:
+                doc_info_text = f"\n    Verarbeite: {document_info}"
+                ascii_art += doc_info_text
+        elif status == "complete":
+            # Zeige die Abschluss-Animation
+            ascii_art = ASCII_FACTORY_COMPLETE
+        else:
+            # Zeige die Idle-Animation
+            ascii_art = ASCII_FACTORY_IDLE
+        
+        # Aktualisiere die ASCII-Art in der GUI
+        if dpg.does_item_exist("ascii_art"):
+            dpg.set_value("ascii_art", ascii_art)
+
+    # Funktion zum Extrahieren von Dokumenteninformationen aus den Logs
+    def extract_document_info(log_line):
+        # Suche nach Mustern wie "Verarbeite Dokument X/Y (ID: Z)"
+        import re
+        
+        # Verschiedene Muster für Dokumenteninformationen
+        patterns = [
+            r"Verarbeite Dokument (\d+)/(\d+) \(ID: (\d+)\)",
+            r"==== Verarbeite Dokument ID: (\d+) ====",
+            r"Aktueller Titel: '([^']+)'"
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, log_line)
+            if match:
+                if pattern == patterns[0]:  # Erstes Muster
+                    return f"Dokument {match.group(1)}/{match.group(2)} (ID: {match.group(3)})"
+                elif pattern == patterns[1]:  # Zweites Muster
+                    return f"Dokument ID: {match.group(1)}"
+                elif pattern == patterns[2]:  # Drittes Muster
+                    return f"'{match.group(1)}'"
+        
+        return None
+
+    # Erweiterte Funktion zum Aktualisieren des Logs mit ASCII-Art-Update
     def update_log_display():
         if dpg.does_item_exist("log_area"):
             log_lines = []
+            document_info = None
             
             # Kombiniere direkte Prozessausgabe mit Logdatei
             # Zeige zuerst die internen Logs (z.B. Debug-Infos)
@@ -498,6 +607,13 @@ try:
                 # Filtere Emojis aus allen Logeinträgen
                 filtered_entries = [filter_emojis(entry) for entry in log_entries[-15:]]
                 log_lines.extend(filtered_entries)
+                
+                # Suche nach Dokumenteninformationen in den letzten Logeinträgen
+                for entry in reversed(filtered_entries):
+                    info = extract_document_info(entry)
+                    if info:
+                        document_info = info
+                        break
             
             # Dann versuche, die tatsächliche Logdatei zu lesen
             try:
@@ -511,6 +627,14 @@ try:
                         # Filtere Emojis aus allen Logzeilen
                         filtered_lines = [filter_emojis(line.strip()) for line in file_recent]
                         log_lines.extend(filtered_lines)
+                        
+                        # Suche nach Dokumenteninformationen in den Logzeilen
+                        if not document_info:
+                            for line in reversed(filtered_lines):
+                                info = extract_document_info(line)
+                                if info:
+                                    document_info = info
+                                    break
             except Exception as e:
                 if debug_mode:
                     log_lines.append(f"Log-Datei-Fehler: {str(e)}")
@@ -522,6 +646,14 @@ try:
             # Aktualisiere GUI
             log_text = "\n".join(log_lines)
             dpg.set_value("log_area", log_text)
+            
+            # Aktualisiere ASCII-Art basierend auf dem Status
+            if processing_active:
+                update_ascii_art("processing", document_info)
+            elif "STOPP:" in log_text or "Verarbeitung abgeschlossen" in log_text:
+                update_ascii_art("complete")
+            else:
+                update_ascii_art("idle")
             
             # Scrolle zum Ende
             try:
@@ -684,30 +816,17 @@ try:
                             tag="log_area"
                         )
                     
-                    # Rechter Teil - Dokumentenvorschau
+                    # Rechter Teil - ASCII-Art statt Dokumentenvorschau
                     with dpg.child_window(width=right_col_width, height=content_height):
-                        safe_add_text("DOKUMENTENVORSCHAU", color=[255, 255, 0])
+                        safe_add_text("DOKUMENTENFABRIK", color=[255, 255, 0])
                         dpg.add_separator()
                         
-                        # Dateiname und Info
-                        safe_add_text("Keine Datei ausgewählt", tag="document_name", wrap=right_col_width-20)
-                        dpg.add_separator()
+                        # ASCII-Art-Bereich
+                        dpg.add_text(ASCII_FACTORY_IDLE, tag="ascii_art", wrap=0)
                         
-                        # Vorschaubild-Bereich
-                        if preview_support:
-                            # Platzhalter für Vorschau
-                            safe_add_text("Vorschaubild wird geladen, sobald verfügbar...")
-                            
-                            # Bildcontainer mit Scrolling
-                            with dpg.child_window(width=right_col_width-20, height=content_height-100, horizontal_scrollbar=True):
-                                # Hier wird das Bild angezeigt, wenn es verfügbar ist
-                                dpg.add_image(
-                                    texture_tag="preview_texture", 
-                                    tag="preview_image",
-                                    show=False
-                                )
-                        else:
-                            safe_add_text("Vorschau nicht verfügbar.\nBitte installiere PIL mit 'pip install pillow'.")
+                        # Statusbereich unter der ASCII-Art
+                        dpg.add_separator()
+                        safe_add_text("Status: Bereit", tag="factory_status")
             
             # Tab: Einstellungen
             with dpg.tab(label="Einstellungen"):

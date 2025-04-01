@@ -1,185 +1,45 @@
-Kritischer Fehler im Hauptprogramm
-Exception: name 'preview_support' is not defined
+[2025-04-01 17:58:51] Kritischer Fehler im Hauptprogramm
+Exception: name 'animation_loop' is not defined
 Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 447, in <module>
-    if preview_support:
-       ^^^^^^^^^^^^^^^
-NameError: name 'preview_support' is not defined
-[2025-04-01 17:32:39] Kritischer Fehler im Hauptprogramm
-Exception: <built-in function add_text> returned a result with an exception set
-Exception: Error: [1000] Message: 	size keyword does not exist.
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 661, in <module>
-    dpg.add_text("DokumentenKI System", color=[255, 255, 0], size=40)
-    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\hendr\AppData\Local\Programs\Python\Python313\Lib\site-packages\dearpygui\dearpygui.py", line 7418, in add_text
-    return internal_dpg.add_text(default_value, label=label, user_data=user_data, use_internal_label=use_internal_label, tag=tag, indent=indent, parent=parent, before=before, source=source, payload_type=payload_type, drag_callback=drag_callback, drop_callback=drop_callback, show=show, pos=pos, filter_key=filter_key, tracked=tracked, track_offset=track_offset, wrap=wrap, bullet=bullet, color=color, show_label=show_label, **kwargs)
-           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-SystemError: <built-in function add_text> returned a result with an exception set
+  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 1121, in <module>
+    threading.Thread(target=animation_loop, daemon=True).start()
+                            ^^^^^^^^^^^^^^
+NameError: name 'animation_loop' is not defined. Did you mean: 'animation_frame'?
 
 -----------------------------------
-[2025-04-01 17:33:16] Kritischer Fehler im Hauptprogramm
-Exception: <built-in function add_text> returned a result with an exception set
-Exception: Error: [1000] Message: 	size keyword does not exist.
-
-The above exception was the direct cause of the following exception:
-
+[2025-04-01 17:59:10] Kritischer Fehler im Hauptprogramm
+Exception: name 'animation_loop' is not defined
 Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 681, in <module>
-    dpg.add_text("DokumentenKI System", color=[255, 255, 0], size=40)
-    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\hendr\AppData\Local\Programs\Python\Python313\Lib\site-packages\dearpygui\dearpygui.py", line 7418, in add_text
-    return internal_dpg.add_text(default_value, label=label, user_data=user_data, use_internal_label=use_internal_label, tag=tag, indent=indent, parent=parent, before=before, source=source, payload_type=payload_type, drag_callback=drag_callback, drop_callback=drop_callback, show=show, pos=pos, filter_key=filter_key, tracked=tracked, track_offset=track_offset, wrap=wrap, bullet=bullet, color=color, show_label=show_label, **kwargs)
-           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-SystemError: <built-in function add_text> returned a result with an exception set
+  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 1121, in <module>
+    threading.Thread(target=animation_loop, daemon=True).start()
+                            ^^^^^^^^^^^^^^
+NameError: name 'animation_loop' is not defined. Did you mean: 'animation_frame'?
 
 -----------------------------------
-[2025-04-01 17:36:40] Kritischer Fehler im Hauptprogramm
-Exception: <built-in function add_image> returned a result with an exception set
-Exception: 
-Error:     [1001]
-Command:   add_image
-Item:      0 
-Label:     Not found
-Item Type: Unknown
-Message:   Texture not found.
-
-The above exception was the direct cause of the following exception:
-
+[2025-04-01 17:59:47] Kritischer Fehler im Hauptprogramm
+Exception: module 'dearpygui.dearpygui' has no attribute 'set_render_callback'
 Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 596, in <module>
-    dpg.add_image(
-    ~~~~~~~~~~~~~^
-        texture_tag="preview_texture",
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        tag="preview_image",
-        ^^^^^^^^^^^^^^^^^^^^
-        show=False
-        ^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\hendr\AppData\Local\Programs\Python\Python313\Lib\site-packages\dearpygui\dearpygui.py", line 4855, in add_image
-    return internal_dpg.add_image(texture_tag, label=label, user_data=user_data, use_internal_label=use_internal_label, tag=tag, width=width, height=height, indent=indent, parent=parent, before=before, source=source, payload_type=payload_type, drag_callback=drag_callback, drop_callback=drop_callback, show=show, pos=pos, filter_key=filter_key, tracked=tracked, track_offset=track_offset, tint_color=tint_color, border_color=border_color, uv_min=uv_min, uv_max=uv_max, **kwargs)
-           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-SystemError: <built-in function add_image> returned a result with an exception set
+  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 1118, in <module>
+    dpg.set_render_callback(update_animation)
+    ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'dearpygui.dearpygui' has no attribute 'set_render_callback'
 
 -----------------------------------
-[2025-04-01 17:36:47] Kritischer Fehler im Hauptprogramm
-Exception: <built-in function add_image> returned a result with an exception set
-Exception: 
-Error:     [1001]
-Command:   add_image
-Item:      0 
-Label:     Not found
-Item Type: Unknown
-Message:   Texture not found.
-
-The above exception was the direct cause of the following exception:
-
+[2025-04-01 17:59:55] Kritischer Fehler im Hauptprogramm
+Exception: name 'animation_loop' is not defined
 Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 596, in <module>
-    dpg.add_image(
-    ~~~~~~~~~~~~~^
-        texture_tag="preview_texture",
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        tag="preview_image",
-        ^^^^^^^^^^^^^^^^^^^^
-        show=False
-        ^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\hendr\AppData\Local\Programs\Python\Python313\Lib\site-packages\dearpygui\dearpygui.py", line 4855, in add_image
-    return internal_dpg.add_image(texture_tag, label=label, user_data=user_data, use_internal_label=use_internal_label, tag=tag, width=width, height=height, indent=indent, parent=parent, before=before, source=source, payload_type=payload_type, drag_callback=drag_callback, drop_callback=drop_callback, show=show, pos=pos, filter_key=filter_key, tracked=tracked, track_offset=track_offset, tint_color=tint_color, border_color=border_color, uv_min=uv_min, uv_max=uv_max, **kwargs)
-           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-SystemError: <built-in function add_image> returned a result with an exception set
+  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 1121, in <module>
+    threading.Thread(target=animation_loop, daemon=True).start()
+                            ^^^^^^^^^^^^^^
+NameError: name 'animation_loop' is not defined. Did you mean: 'animation_frame'?
 
 -----------------------------------
-[2025-04-01 17:38:40] Kritischer Fehler im Hauptprogramm
-Exception: <built-in function add_text> returned a result with an exception set
-Exception: Error: [1000] Message: 	size keyword does not exist.
-
-The above exception was the direct cause of the following exception:
-
+[2025-04-01 18:05:08] Kritischer Fehler im Hauptprogramm
+Exception: name 'update_parallel_docs' is not defined
 Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 731, in <module>
-    dpg.add_text("DokumentenKI System", color=[255, 255, 0], size=40)
-    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\hendr\AppData\Local\Programs\Python\Python313\Lib\site-packages\dearpygui\dearpygui.py", line 7418, in add_text
-    return internal_dpg.add_text(default_value, label=label, user_data=user_data, use_internal_label=use_internal_label, tag=tag, indent=indent, parent=parent, before=before, source=source, payload_type=payload_type, drag_callback=drag_callback, drop_callback=drop_callback, show=show, pos=pos, filter_key=filter_key, tracked=tracked, track_offset=track_offset, wrap=wrap, bullet=bullet, color=color, show_label=show_label, **kwargs)
-           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-SystemError: <built-in function add_text> returned a result with an exception set
-
------------------------------------
-[2025-04-01 17:39:32] Kritischer Fehler im Hauptprogramm
-Exception: <built-in function add_text> returned a result with an exception set
-Exception: Error: [1000] Message: 	size keyword does not exist.
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 731, in <module>
-    dpg.add_text("DokumentenKI System", color=[255, 255, 0], size=40)
-    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\hendr\AppData\Local\Programs\Python\Python313\Lib\site-packages\dearpygui\dearpygui.py", line 7418, in add_text
-    return internal_dpg.add_text(default_value, label=label, user_data=user_data, use_internal_label=use_internal_label, tag=tag, indent=indent, parent=parent, before=before, source=source, payload_type=payload_type, drag_callback=drag_callback, drop_callback=drop_callback, show=show, pos=pos, filter_key=filter_key, tracked=tracked, track_offset=track_offset, wrap=wrap, bullet=bullet, color=color, show_label=show_label, **kwargs)
-           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-SystemError: <built-in function add_text> returned a result with an exception set
-
------------------------------------
-[2025-04-01 17:46:04] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
-Exception: name 'API_TOKEN' is not defined
-Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
-    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
-                                                                            ^^^^^^^^^
-NameError: name 'API_TOKEN' is not defined
-
------------------------------------
-[2025-04-01 17:46:05] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
-Exception: name 'API_TOKEN' is not defined
-Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
-    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
-                                                                            ^^^^^^^^^
-NameError: name 'API_TOKEN' is not defined
-
------------------------------------
-[2025-04-01 17:47:04] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
-Exception: name 'API_TOKEN' is not defined
-Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
-    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
-                                                                            ^^^^^^^^^
-NameError: name 'API_TOKEN' is not defined
-
------------------------------------
-[2025-04-01 17:47:39] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
-Exception: name 'API_TOKEN' is not defined
-Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
-    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
-                                                                            ^^^^^^^^^
-NameError: name 'API_TOKEN' is not defined
-
------------------------------------
-[2025-04-01 17:48:14] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
-Exception: name 'API_TOKEN' is not defined
-Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
-    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
-                                                                            ^^^^^^^^^
-NameError: name 'API_TOKEN' is not defined
-
------------------------------------
-[2025-04-01 17:48:28] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
-Exception: name 'API_TOKEN' is not defined
-Traceback (most recent call last):
-  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
-    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
-                                                                            ^^^^^^^^^
-NameError: name 'API_TOKEN' is not defined
+  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 747, in <module>
+    dpg.add_slider_int(label="Parallel", min_value=1, max_value=4, default_value=1, callback=update_parallel_docs)
+                                                                                             ^^^^^^^^^^^^^^^^^^^^
+NameError: name 'update_parallel_docs' is not defined. Did you mean: 'num_parallel_docs'?
 
 -----------------------------------
