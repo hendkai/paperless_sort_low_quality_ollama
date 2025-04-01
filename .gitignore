@@ -1,3 +1,63 @@
+# Python-spezifische Dateien
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtuelle Umgebungen
+venv/
+ENV/
+env/
+
+# IDE-spezifische Dateien
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Projektspezifische Dateien
+config.ini
+secrets.json
+.env
+
+# Log-Dateien
+*.log
+error_log.txt
+debug_log.txt
+log/
+logs/
+
+# Temporäre Dateien
+temp/
+tmp/
+.cache/
+
+# Datenbanken
+*.db
+*.sqlite
+*.sqlite3
+
+# Ausgabedateien
+output/
+results/
+
 # Environment variables
 .env
 

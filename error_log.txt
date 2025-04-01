@@ -129,3 +129,57 @@ Traceback (most recent call last):
 SystemError: <built-in function add_text> returned a result with an exception set
 
 -----------------------------------
+[2025-04-01 17:46:04] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
+Exception: name 'API_TOKEN' is not defined
+Traceback (most recent call last):
+  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
+    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
+                                                                            ^^^^^^^^^
+NameError: name 'API_TOKEN' is not defined
+
+-----------------------------------
+[2025-04-01 17:46:05] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
+Exception: name 'API_TOKEN' is not defined
+Traceback (most recent call last):
+  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
+    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
+                                                                            ^^^^^^^^^
+NameError: name 'API_TOKEN' is not defined
+
+-----------------------------------
+[2025-04-01 17:47:04] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
+Exception: name 'API_TOKEN' is not defined
+Traceback (most recent call last):
+  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
+    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
+                                                                            ^^^^^^^^^
+NameError: name 'API_TOKEN' is not defined
+
+-----------------------------------
+[2025-04-01 17:47:39] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
+Exception: name 'API_TOKEN' is not defined
+Traceback (most recent call last):
+  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
+    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
+                                                                            ^^^^^^^^^
+NameError: name 'API_TOKEN' is not defined
+
+-----------------------------------
+[2025-04-01 17:48:14] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
+Exception: name 'API_TOKEN' is not defined
+Traceback (most recent call last):
+  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
+    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
+                                                                            ^^^^^^^^^
+NameError: name 'API_TOKEN' is not defined
+
+-----------------------------------
+[2025-04-01 17:48:28] Fehler beim Abrufen der Vorschau: name 'API_TOKEN' is not defined
+Exception: name 'API_TOKEN' is not defined
+Traceback (most recent call last):
+  File "c:\Users\hendr\Documents\Programmieren\paperless_sort_low_quality_ollama\gui.py", line 211, in fetch_preview_from_paperless
+    response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
+                                                                            ^^^^^^^^^
+NameError: name 'API_TOKEN' is not defined
+
+-----------------------------------

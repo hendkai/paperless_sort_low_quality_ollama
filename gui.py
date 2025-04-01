@@ -4,6 +4,7 @@ import traceback
 import time
 import subprocess
 from datetime import datetime
+import requests
 
 print("Starte DokumentenKI GUI...")
 
@@ -34,29 +35,43 @@ def log_error(message, exception=None):
     if exception:
         print(f"Exception: {str(exception)}")
 
-# Sichere Pillow-Import-Funktion
+# Verbesserte PIL-Erkennung und Import
 def setup_pillow():
     global preview_support
+    
     try:
+        # Versuche direkt zu importieren
         from PIL import Image
+        
+        # Teste, ob PIL tatsächlich funktioniert, indem ein leeres Bild erstellt wird
+        test_img = Image.new('RGB', (10, 10), color='red')
+        # Wenn es bis hierhin klappt, ist PIL funktionsfähig
+        
         preview_support = True
-        print("Vorschau-Unterstützung verfügbar.")
+        print("✅ PIL (Pillow) erfolgreich erkannt und getestet.")
         return True
-    except ImportError:
+    except ImportError as e:
         preview_support = False
+        print(f"❌ PIL ImportError: {e}")
         print("PIL nicht installiert, versuche Installation...")
         try:
-            import subprocess
             subprocess.run([sys.executable, "-m", "pip", "install", "pillow"], 
                           check=True, capture_output=True)
+            
+            # Nach Installation erneut versuchen
             from PIL import Image
             preview_support = True
-            print("PIL erfolgreich installiert!")
+            print("✅ PIL erfolgreich installiert!")
             return True
         except Exception as e:
-            log_error("Konnte PIL nicht installieren", e)
+            log_error(f"Konnte PIL nicht installieren: {e}", e)
             preview_support = False
             return False
+    except Exception as e:
+        # Andere Fehler beim Import oder bei der Verwendung von PIL
+        log_error(f"Fehler bei PIL-Setup: {e}", e)
+        preview_support = False
+        return False
 
 # Angepasste Anzeigegröße mit 16:9 Seitenverhältnis
 def get_display_size():
@@ -186,6 +201,100 @@ def safe_add_text(text, **kwargs):
             # Äußerster Fallback
             return None
 
+# Funktion zum Abrufen der Vorschau aus Paperless NGX
+def fetch_preview_from_paperless(document_id):
+    try:
+        # Beispiel-URL für die Vorschau, anpassen je nach API-Dokumentation von Paperless NGX
+        preview_url = f"http://your-paperless-ngx-url/api/documents/{document_id}/preview"
+        
+        # Anfrage an die API senden
+        response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
+        
+        if response.status_code == 200:
+            # Vorschau-Bilddaten erhalten
+            image_data = response.content
+            
+            # Bild aus den Daten erstellen
+            from PIL import Image
+            from io import BytesIO
+            image = Image.open(BytesIO(image_data))
+            image.thumbnail((300, 300))  # Vorschaugröße anpassen
+            
+            # Konvertiere das Bild in ein Format, das DearPyGUI anzeigen kann
+            image_data = image.tobytes("raw", "RGB")
+            width, height = image.size
+            
+            # Aktualisiere die Textur
+            dpg.set_value("preview_texture", image_data)
+            dpg.configure_item("preview_image", width=width, height=height, show=True)
+            dpg.set_value("document_name", f"Dokument ID: {document_id}")
+        else:
+            log_error(f"Fehler beim Abrufen der Vorschau: {response.status_code} {response.text}")
+            dpg.set_value("document_name", "Fehler beim Abrufen der Vorschau")
+            dpg.configure_item("preview_image", show=False)
+    except Exception as e:
+        log_error(f"Fehler beim Abrufen der Vorschau: {e}", e)
+        dpg.set_value("document_name", "Fehler beim Abrufen der Vorschau")
+        dpg.configure_item("preview_image", show=False)
+
+# Verbesserte Fehlerbehandlung für GUI-Operationen
+def safe_configure_item(tag, **kwargs):
+    try:
+        if dpg.does_item_exist(tag):
+            dpg.configure_item(tag, **kwargs)
+        else:
+            print(f"Warnung: Item mit Tag '{tag}' existiert nicht und kann nicht konfiguriert werden.")
+    except Exception as e:
+        print(f"Fehler beim Konfigurieren von '{tag}': {str(e)}")
+
+# Funktion zum Stoppen der Verarbeitung
+def stop_processing():
+    global processing_active, process, log_entries
+    
+    if processing_active:
+        try:
+            # Beende den laufenden Prozess
+            if process:
+                process.terminate()
+                process = None
+            
+            processing_active = False
+            dpg.set_value("status_text", "Status: Verarbeitung gestoppt")
+            
+            # UI aktualisieren
+            dpg.set_value("process_button", "START")
+            safe_configure_item("stop_button", enabled=False)
+            
+            # Füge Stopp-Meldung zum Log hinzu
+            log_entries.append("STOPP: Verarbeitung wurde manuell beendet.")
+            update_log_display()
+            
+            print("Verarbeitung wurde gestoppt.")
+        except Exception as e:
+            log_error(f"Fehler beim Stoppen der Verarbeitung: {e}", e)
+            dpg.set_value("status_text", "Fehler beim Stoppen der Verarbeitung")
+            
+            # Füge Fehlermeldung zum Log hinzu
+            log_entries.append(f"FEHLER: Konnte Verarbeitung nicht stoppen: {str(e)}")
+            update_log_display()
+
+# Debugging: Überprüfen Sie, ob Pillow in der richtigen Umgebung installiert ist
+def check_pillow_installation():
+    try:
+        import subprocess
+        result = subprocess.run([sys.executable, "-m", "pip", "show", "pillow"], capture_output=True, text=True)
+        if result.returncode == 0:
+            print("Pillow ist installiert:")
+            print(result.stdout)
+        else:
+            print("Pillow ist nicht installiert oder nicht in der aktuellen Umgebung verfügbar.")
+            print(result.stderr)
+    except Exception as e:
+        print(f"Fehler beim Überprüfen der Pillow-Installation: {e}")
+
+# Rufen Sie die Überprüfung beim Start auf
+check_pillow_installation()
+
 # Hauptprogramm mit umfassender Fehlerbehandlung
 try:
     # Import der benötigten Bibliotheken
@@ -307,6 +416,13 @@ try:
                     log_entries.append(f"  - {key}={os.getenv(key, 'nicht gesetzt')}")
             
             try:
+                # Beispiel: ID des Dokuments, das verarbeitet wird
+                document_id = 83291  # Diese ID sollte dynamisch aus der Verarbeitung stammen
+                
+                # UI aktualisieren - OHNE configure_item für stop_button
+                dpg.set_value("process_button", "STOPP")
+                dpg.set_value("status_text", "Status: Aktiv")
+                
                 # Starte main.py mit erweiterten Optionen
                 # Kommandozeilen-Argument für Test-Modi
                 cmd = [sys.executable, script_path, "--no-confirm"]
@@ -330,10 +446,6 @@ try:
                     env=env,  # Modifizierte Umgebung mit UTF-8
                     errors='replace'  # Wichtig: Ersetze nicht darstellbare Zeichen
                 )
-                
-                # UI aktualisieren
-                dpg.configure_item("process_button", label="STOPP")
-                dpg.configure_item("status_text", default_value="Status: Aktiv")
                 
                 # Beginne mit dem Lesen der Ausgabe
                 def read_output():
@@ -359,7 +471,7 @@ try:
             except Exception as e:
                 log_entries.append(f"Fehler beim Starten: {str(e)}")
                 processing_active = False
-                dpg.configure_item("process_button", label="START")
+                dpg.set_value("process_button", "START")
                 update_log_display()
         else:
             # Prozess beenden
@@ -371,8 +483,8 @@ try:
                     log_entries.append(f"Fehler beim Beenden des Prozesses: {str(e)}")
             
             # UI aktualisieren
-            dpg.configure_item("process_button", label="START")
-            dpg.configure_item("status_text", default_value="Status: Bereit")
+            dpg.set_value("process_button", "START")
+            dpg.set_value("status_text", "Status: Bereit")
             update_log_display()
     
     # Aktualisiere Log-Anzeige mit Emoji-Filterung
@@ -540,14 +652,26 @@ try:
                         safe_add_text("DOKUMENTENVERARBEITUNG", color=[255, 255, 0])
                         dpg.add_separator()
                         
-                        # Start/Stop Button
-                        dpg.add_button(
-                            label="START", 
-                            callback=toggle_processing,
-                            width=middle_col_width-20, 
-                            height=60, 
-                            tag="process_button"
-                        )
+                        # Buttons in einer Gruppe
+                        with dpg.group(horizontal=True):
+                            # Start Button
+                            dpg.add_button(
+                                label="START", 
+                                callback=toggle_processing,
+                                width=middle_col_width//2-15, 
+                                height=60, 
+                                tag="process_button"
+                            )
+                            
+                            # Stop Button - separat hinzugefügt
+                            dpg.add_button(
+                                label="STOPP", 
+                                callback=stop_processing,
+                                width=middle_col_width//2-15, 
+                                height=60, 
+                                tag="stop_button",
+                                enabled=False  # Standardmäßig deaktiviert
+                            )
                         
                         # Log-Bereich
                         safe_add_text("LOG", color=[255, 255, 0])
@@ -821,8 +945,8 @@ try:
             
             process = None
             processing_active = False
-            dpg.configure_item("process_button", label="START")
-            dpg.configure_item("status_text", default_value="Status: Bereit")
+            dpg.set_value("process_button", "START")
+            dpg.set_value("status_text", "Status: Bereit")
             update_log_display()
     
     # Aufräumen
