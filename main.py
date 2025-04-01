@@ -30,6 +30,10 @@ MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS"))
 NUM_LLM_MODELS = int(os.getenv("NUM_LLM_MODELS", 3))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 RENAME_DOCUMENTS = os.getenv("RENAME_DOCUMENTS", "no").lower() == 'yes'
+# Neue Einstellung für parallele Dokumentenverarbeitung
+PARALLEL_DOCS = int(os.getenv("PARALLEL_DOCS", "1"))
+# Begrenze auf 1-4 Dokumente
+PARALLEL_DOCS = max(1, min(4, PARALLEL_DOCS))
 
 PROMPT_DEFINITION = """
 Please review the following document content and determine if it is of low quality or high quality.
@@ -218,32 +222,47 @@ def process_documents(documents: list, api_url: str, api_token: str, ignore_alre
         services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, THIRD_MODEL_NAME))
     ensemble_service = EnsembleOllamaService(services)
 
-    # Sequentielle Verarbeitung statt mit ThreadPoolExecutor
-    total_documents = len([doc for doc in documents if not (ignore_already_tagged and doc.get('tags'))])
-    processed_count = 0
+    # Filtere Dokumente, die bereits getaggt sind, wenn ignore_already_tagged aktiviert ist
+    filtered_documents = [doc for doc in documents if not (ignore_already_tagged and doc.get('tags'))]
+    total_documents = len(filtered_documents)
     
-    print(f"{Fore.CYAN}🤖 Starte sequentielle Verarbeitung von {total_documents} Dokumenten...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}🤖 Starte Verarbeitung von {total_documents} Dokumenten mit {PARALLEL_DOCS} parallelen Prozessen...{Style.RESET_ALL}")
     
-    for document in documents:
-        content = document.get('content', '')
-        if ignore_already_tagged and document.get('tags'):
-            logger.info(f"Überspringe Dokument ID {document['id']}, da es bereits markiert ist.")
-            continue
+    # Verwende ThreadPoolExecutor für parallele Verarbeitung
+    with ThreadPoolExecutor(max_workers=PARALLEL_DOCS) as executor:
+        # Erstelle eine Liste von Futures für jedes Dokument
+        futures = []
+        for document in filtered_documents:
+            content = document.get('content', '')
+            if ignore_already_tagged and document.get('tags'):
+                logger.info(f"Überspringe Dokument ID {document['id']}, da es bereits markiert ist.")
+                continue
+            
+            # Füge Future zur Liste hinzu
+            future = executor.submit(
+                process_single_document, 
+                document, 
+                content, 
+                ensemble_service, 
+                api_url, 
+                api_token, 
+                csrf_token
+            )
+            futures.append((future, document['id']))
         
-        # Fortschrittsanzeige aktualisieren
-        processed_count += 1
-        print(f"{Fore.CYAN}🤖 Verarbeite Dokument {processed_count}/{total_documents} (ID: {document['id']}){Style.RESET_ALL}")
-        
-        # Dokument vollständig verarbeiten, bevor mit dem nächsten fortgefahren wird
-        try:
-            process_single_document(document, content, ensemble_service, api_url, api_token, csrf_token)
-            print(f"{Fore.GREEN}✅ Dokument {document['id']} verarbeitet ({processed_count}/{total_documents}){Style.RESET_ALL}")
-        except Exception as e:
-            logger.error(f"Fehler bei der Verarbeitung von Dokument {document['id']}: {e}")
-            print(f"{Fore.RED}❌ Fehler bei Dokument {document['id']}: {str(e)[:100]}...{Style.RESET_ALL}")
-        
-        # Klare visuelle Trennung zwischen Dokumenten in der Konsole
-        print(f"{Fore.YELLOW}{'=' * 80}{Style.RESET_ALL}\n")
+        # Verarbeite die Futures, während sie abgeschlossen werden
+        completed = 0
+        for future, doc_id in futures:
+            try:
+                future.result()  # Warte auf Abschluss und fange Ausnahmen ab
+                completed += 1
+                print(f"{Fore.GREEN}✅ Dokument {doc_id} verarbeitet ({completed}/{total_documents}){Style.RESET_ALL}")
+            except Exception as e:
+                logger.error(f"Fehler bei der Verarbeitung von Dokument {doc_id}: {e}")
+                print(f"{Fore.RED}❌ Fehler bei Dokument {doc_id}: {str(e)[:100]}...{Style.RESET_ALL}")
+            
+            # Klare visuelle Trennung zwischen Dokumenten in der Konsole
+            print(f"{Fore.YELLOW}{'=' * 80}{Style.RESET_ALL}\n")
     
     print(f"{Fore.GREEN}🤖 Verarbeitung aller Dokumente abgeschlossen!{Style.RESET_ALL}")
 
@@ -253,9 +272,15 @@ def process_single_document(document: dict, content: str, ensemble_service: Ense
     logger.info(f"Aktueller Titel: '{document.get('title', 'Kein Titel')}'")
     logger.info(f"Inhaltslänge: {len(content)} Zeichen")
     
+    # Fortschritt: 25% - Dokument geladen
+    logger.info(f"Dokument {document_id} verarbeitet (1/4)")
+    
     quality_response, consensus_reached = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document_id)
     logger.info(f"Ollama Qualitätsbewertung für Dokument ID {document_id}: {quality_response}")
     logger.info(f"Konsensus erreicht: {consensus_reached}")
+    
+    # Fortschritt: 50% - Qualitätsbewertung abgeschlossen
+    logger.info(f"Dokument {document_id} verarbeitet (2/4)")
 
     if consensus_reached:
         if quality_response.lower() == 'low quality':
@@ -264,6 +289,9 @@ def process_single_document(document: dict, content: str, ensemble_service: Ense
                 tag_document(document_id, api_url, api_token, LOW_QUALITY_TAG_ID, csrf_token)
                 logger.info(f"Dokument ID {document_id} erfolgreich als 'Low Quality' markiert.")
                 print(f"Die KI-Modelle haben entschieden, die Datei als 'Low Quality' einzustufen.")
+                
+                # Fortschritt: 100% - Tagging abgeschlossen
+                logger.info(f"Dokument {document_id} verarbeitet (4/4)")
             except requests.exceptions.HTTPError as e:
                 logger.error(f"Fehler beim Markieren des Dokuments ID {document_id} als 'Low Quality': {e}")
         elif quality_response.lower() == 'high quality':
@@ -272,6 +300,9 @@ def process_single_document(document: dict, content: str, ensemble_service: Ense
                 tag_document(document_id, api_url, api_token, HIGH_QUALITY_TAG_ID, csrf_token)
                 logger.info(f"Dokument ID {document_id} erfolgreich als 'High Quality' markiert.")
                 print(f"Die KI-Modelle haben entschieden, die Datei als 'High Quality' einzustufen.")
+                
+                # Fortschritt: 75% - Tagging abgeschlossen
+                logger.info(f"Dokument {document_id} verarbeitet (3/4)")
                 
                 # Dokument sofort umbenennen, wenn es als high quality eingestuft wurde
                 logger.info(f"Beginne Umbenennungsprozess für High-Quality-Dokument {document_id}...")
@@ -286,11 +317,17 @@ def process_single_document(document: dict, content: str, ensemble_service: Ense
                 update_document_title(api_url, api_token, document_id, new_title, csrf_token, old_title)
                 logger.info(f"Umbenennung für Dokument {document_id} abgeschlossen!")
                 
+                # Fortschritt: 100% - Umbenennung abgeschlossen
+                logger.info(f"Dokument {document_id} verarbeitet (4/4)")
+                
             except requests.exceptions.HTTPError as e:
                 logger.error(f"Fehler beim Markieren oder Umbenennen des Dokuments ID {document_id}: {e}")
     else:
         logger.warning(f"Die KI-Modelle konnten keinen Konsensus für Dokument ID {document_id} finden. Das Dokument wird übersprungen.")
         print(f"Die KI-Modelle konnten keinen Konsensus für Dokument ID {document_id} finden. Das Dokument wird übersprungen.")
+        
+        # Fortschritt: 100% - Übersprungen
+        logger.info(f"Dokument {document_id} verarbeitet (4/4)")
 
     logger.info(f"==== Verarbeitung von Dokument ID: {document_id} abgeschlossen ====\n")
     time.sleep(1)  # Add delay between requests

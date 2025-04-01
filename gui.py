@@ -5,24 +5,32 @@ import time
 import subprocess
 from datetime import datetime
 import requests
+import threading
+import dearpygui.dearpygui as dpg
 
-print("Starte DokumentenKI GUI...")
+print("Starting DocumentAI GUI...")
 
-# Globale Variablen
-processing_active = False
-log_entries = []
-process = None
-log_file_path = os.path.abspath("log.txt")  # Pfad zur Log-Datei
-preview_path = os.path.abspath("preview.png")  # Pfad zum Vorschaubild
-current_preview_file = None  # Aktuell vorgeschaute Datei
-current_document_name = "Keine Datei ausgewählt"  # Name des aktuellen Dokuments
-preview_support = False  # Initialisiere die Variable hier!
-debug_mode = True  # Debug-Modus für ausführliche Logs
+# Prüfe, ob dotenv verfügbar ist
+env_support = False
+try:
+    from dotenv import load_dotenv, find_dotenv, set_key
+    env_support = True
+    load_dotenv()
+except ImportError:
+    print("Python-dotenv not installed. Settings cannot be saved.")
 
-# Vereinfachte ASCII-Art für die Dokumentenfabrik (nur grundlegende ASCII-Zeichen)
+# Prüfe, ob psutil verfügbar ist
+system_monitoring = False
+try:
+    import psutil
+    system_monitoring = True
+except ImportError:
+    print("Psutil not installed. System monitoring disabled.")
+
+# ASCII-Art für die Fabrik
 ASCII_FACTORY_IDLE = """
     +-------------------------------+
-    |      DOKUMENTEN-VERARBEITUNG  |
+    |      DOCUMENT PROCESSING      |
     +-------------------------------+
     |                               |
     |         +---+      +---+      |
@@ -31,8 +39,8 @@ ASCII_FACTORY_IDLE = """
     |           |          |        |
     |     +---------------------+   |
     |     |                     |   |
-    |     |    BEREIT FÜR       |   |
-    |     |   VERARBEITUNG      |   |
+    |     |      READY FOR      |   |
+    |     |     PROCESSING      |   |
     |     |                     |   |
     |     +---------------------+   |
     |                               |
@@ -43,7 +51,7 @@ ASCII_FACTORY_IDLE = """
 
 ASCII_FACTORY_PROCESSING = """
     +-------------------------------+
-    |      DOKUMENTEN-VERARBEITUNG  |
+    |      DOCUMENT PROCESSING      |
     +-------------------------------+
     |         +---+      +---+      |
     |    +--->| # |--+   | # |<--+  |
@@ -63,7 +71,7 @@ ASCII_FACTORY_PROCESSING = """
 
 ASCII_FACTORY_COMPLETE = """
     +-------------------------------+
-    |      DOKUMENTEN-VERARBEITUNG  |
+    |      DOCUMENT PROCESSING      |
     +-------------------------------+
     |                               |
     |         +---+      +---+      |
@@ -72,233 +80,47 @@ ASCII_FACTORY_COMPLETE = """
     |                               |
     |     +---------------------+   |
     |     |                     |   |
-    |     |    VERARBEITUNG     |   |
-    |     |    ABGESCHLOSSEN    |   |
+    |     |     PROCESSING      |   |
+    |     |     COMPLETE        |   |
     |     |                     |   |
     |     +---------------------+   |
     |              | |              |
     |              v v              |
-    |         [DOKUMENTE]           |
+    |         [DOCUMENTS]           |
     +-------------------------------+
 """
 
-# Hilfsfunktionen für Fehlerprotokollierung
-def log_error(message, exception=None):
-    try:
-        with open("error_log.txt", "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
-            if exception:
-                f.write(f"Exception: {str(exception)}\n")
-                f.write(traceback.format_exc())
-                f.write("\n-----------------------------------\n")
-    except:
-        pass  # Stiller Fehler, wenn auch das Loggen fehlschlägt
-    
-    print(f"FEHLER: {message}")
-    if exception:
-        print(f"Exception: {str(exception)}")
+# Globale Variablen
+processing_active = False
+log_entries = []
+process = None
+log_file_path = os.path.abspath("log.txt")  # Pfad zur Log-Datei
+preview_path = os.path.abspath("preview.png")  # Pfad zum Vorschaubild
+current_preview_file = None  # Aktuell vorgeschaute Datei
+current_document_name = "Keine Datei ausgewählt"  # Name des aktuellen Dokuments
+preview_support = False  # Initialisiere die Variable hier!
+debug_mode = True  # Debug-Modus für ausführliche Logs
 
-# Verbesserte PIL-Erkennung und Import
-def setup_pillow():
-    global preview_support
-    
-    try:
-        # Versuche direkt zu importieren
-        from PIL import Image
-        
-        # Teste, ob PIL tatsächlich funktioniert, indem ein leeres Bild erstellt wird
-        test_img = Image.new('RGB', (10, 10), color='red')
-        # Wenn es bis hierhin klappt, ist PIL funktionsfähig
-        
-        preview_support = True
-        print("✅ PIL (Pillow) erfolgreich erkannt und getestet.")
-        return True
-    except ImportError as e:
-        preview_support = False
-        print(f"❌ PIL ImportError: {e}")
-        print("PIL nicht installiert, versuche Installation...")
-        try:
-            subprocess.run([sys.executable, "-m", "pip", "install", "pillow"], 
-                          check=True, capture_output=True)
-            
-            # Nach Installation erneut versuchen
-            from PIL import Image
-            preview_support = True
-            print("✅ PIL erfolgreich installiert!")
-            return True
-        except Exception as e:
-            log_error(f"Konnte PIL nicht installieren: {e}", e)
-            preview_support = False
-            return False
-    except Exception as e:
-        # Andere Fehler beim Import oder bei der Verwendung von PIL
-        log_error(f"Fehler bei PIL-Setup: {e}", e)
-        preview_support = False
-        return False
+# Lade die Einstellung für parallele Dokumente aus der .env-Datei
+try:
+    if env_support:
+        num_parallel_docs = int(os.getenv("PARALLEL_DOCS", "1"))
+        num_parallel_docs = max(1, min(4, num_parallel_docs))  # Begrenze auf 1-4
+    else:
+        num_parallel_docs = 1
+except:
+    num_parallel_docs = 1
 
-# Angepasste Anzeigegröße mit 16:9 Seitenverhältnis
-def get_display_size():
-    try:
-        # Versuche, Bildschirmgröße zu ermitteln
-        if 'ctypes' in sys.modules or True:
-            import ctypes
-            user32 = ctypes.windll.user32
-            screen_width = user32.GetSystemMetrics(0)
-            screen_height = user32.GetSystemMetrics(1)
-            
-            # Gib 85% der verfügbaren Bildschirmgröße als Ausgangswert
-            avail_width = int(screen_width * 0.85)
-            avail_height = int(screen_height * 0.85)
-            
-            # Berechne die optimale 16:9 Größe innerhalb der verfügbaren Fläche
-            if avail_width / avail_height > 16/9:
-                # Wenn der Bildschirm breiter als 16:9 ist, höhenbegrenzt
-                height = avail_height
-                width = int(height * 16/9)
-            else:
-                # Wenn der Bildschirm schmaler als 16:9 ist, breitenbegrenzt
-                width = avail_width
-                height = int(width * 9/16)
-            
-            print(f"Optimale 16:9 Größe: {width}x{height}")
-            return width, height
-    except Exception as e:
-        print(f"Fehler bei Bildschirmgrößenermittlung: {str(e)}")
-    
-    # Fallback auf Standard 16:9 Größe
-    return 1600, 900  # 16:9 Standardgröße
+# Dokumenten-Status-Tracking
+document_statuses = {}  # Speichert Status für jedes Dokument: ID -> {progress, status, title}
 
-# Verbesserte Funktion zum Filtern von Emoji und Sonderzeichen
-def filter_emojis(text):
-    if not text:
-        return text
-        
-    try:
-        # Ersetze bekannte Emojis mit lesbarem Text
-        text_replacements = {
-            '🤖': '[ROBOT]',
-            '✅': '[OK]',
-            '❌': '[ERROR]',
-            '⚠️': '[WARNING]',
-            '🔄': '[RELOAD]',
-            '🔍': '[SEARCH]',
-            '📄': '[DOC]',
-            '⏳': '[WAIT]'
-        }
-        
-        # Ersetze bekannte Fortschrittsbalken und ASCII-Art
-        progress_patterns = [
-            # Fortschrittsbalken-Muster
-            (r'\[═+\]', '[==PROGRESS==]'),
-            # Spinner-Symbole
-            (r'[\\|/-](\s*)$', '.')
-        ]
-        
-        # Wende Emoji-Ersetzungen an
-        for emoji, replacement in text_replacements.items():
-            if emoji in text:
-                text = text.replace(emoji, replacement)
-        
-        # Wende reguläre Ausdrücke für Fortschrittsbalken an
-        import re
-        for pattern, replacement in progress_patterns:
-            text = re.sub(pattern, replacement, text)
-        
-        # Allgemeine Unicode-Bereinigung für restliche problematische Zeichen
-        result = ""
-        for char in text:
-            # Grundlegende lateinische Zeichen, Zahlen und gängige Symbole beibehalten
-            if ord(char) < 128:
-                result += char
-            else:
-                # Ersetze unbekannte Unicode-Zeichen
-                result += '.'
-                
-        return result
-    except Exception as e:
-        # Absoluter Fallback - nur ASCII-Zeichen behalten
-        return ''.join(c for c in text if ord(c) < 128)
-
-# Sichere Text-Hinzufügungsfunktion 
+# Hilfsfunktion für sicheres Hinzufügen von Text
 def safe_add_text(text, **kwargs):
     try:
-        # Stelle sicher, dass text ein String ist
-        if text is None:
-            text = ""
-        else:
-            text = str(text)
-            
-        # Stelle sicher, dass color-Parameter korrekt ist, falls vorhanden
-        if 'color' in kwargs and kwargs['color'] is not None:
-            color = kwargs['color']
-            # Überprüfe, ob color eine Liste mit 3 oder 4 Elementen ist
-            if not (isinstance(color, list) and (len(color) == 3 or len(color) == 4)):
-                # Setze einen Standardwert, wenn das Format ungültig ist
-                kwargs['color'] = [255, 255, 255]
-                
-        # Sichere size-Parameter
-        if 'size' in kwargs and kwargs['size'] is not None:
-            try:
-                kwargs['size'] = int(kwargs['size'])
-            except (ValueError, TypeError):
-                # Entferne size bei ungültigem Format
-                del kwargs['size']
-                
-        # Teste auf ungültigen tag-Parameter
-        if 'tag' in kwargs and dpg.does_item_exist(kwargs['tag']):
-            # Wenn der Tag bereits existiert, löschen wir ihn erst
-            try:
-                dpg.delete_item(kwargs['tag'])
-            except:
-                # Falls das Löschen fehlschlägt, generieren wir einen neuen Tag
-                import uuid
-                kwargs['tag'] = f"text_{uuid.uuid4().hex[:8]}"
-                
-        # Füge den Text sicher hinzu
         return dpg.add_text(text, **kwargs)
     except Exception as e:
-        # Fallback: Füge Text ohne spezielle Formatierung hinzu
-        try:
-            return dpg.add_text(f"Text-Fehler: {str(text)[:20]}...")
-        except:
-            # Äußerster Fallback
-            return None
-
-# Funktion zum Abrufen der Vorschau aus Paperless NGX
-def fetch_preview_from_paperless(document_id):
-    try:
-        # Beispiel-URL für die Vorschau, anpassen je nach API-Dokumentation von Paperless NGX
-        preview_url = f"http://your-paperless-ngx-url/api/documents/{document_id}/preview"
-        
-        # Anfrage an die API senden
-        response = requests.get(preview_url, headers={"Authorization": f"Token {API_TOKEN}"})
-        
-        if response.status_code == 200:
-            # Vorschau-Bilddaten erhalten
-            image_data = response.content
-            
-            # Bild aus den Daten erstellen
-            from PIL import Image
-            from io import BytesIO
-            image = Image.open(BytesIO(image_data))
-            image.thumbnail((300, 300))  # Vorschaugröße anpassen
-            
-            # Konvertiere das Bild in ein Format, das DearPyGUI anzeigen kann
-            image_data = image.tobytes("raw", "RGB")
-            width, height = image.size
-            
-            # Aktualisiere die Textur
-            dpg.set_value("preview_texture", image_data)
-            dpg.configure_item("preview_image", width=width, height=height, show=True)
-            dpg.set_value("document_name", f"Dokument ID: {document_id}")
-        else:
-            log_error(f"Fehler beim Abrufen der Vorschau: {response.status_code} {response.text}")
-            dpg.set_value("document_name", "Fehler beim Abrufen der Vorschau")
-            dpg.configure_item("preview_image", show=False)
-    except Exception as e:
-        log_error(f"Fehler beim Abrufen der Vorschau: {e}", e)
-        dpg.set_value("document_name", "Fehler beim Abrufen der Vorschau")
-        dpg.configure_item("preview_image", show=False)
+        print(f"Fehler beim Hinzufügen von Text: {str(e)}")
+        return dpg.add_text(f"Fehler: {str(e)}")
 
 # Verbesserte Fehlerbehandlung für GUI-Operationen
 def safe_configure_item(tag, **kwargs):
@@ -306,212 +128,265 @@ def safe_configure_item(tag, **kwargs):
         if dpg.does_item_exist(tag):
             dpg.configure_item(tag, **kwargs)
         else:
-            print(f"Warnung: Item mit Tag '{tag}' existiert nicht und kann nicht konfiguriert werden.")
+            if debug_mode:
+                print(f"Warnung: Item mit Tag '{tag}' existiert nicht und kann nicht konfiguriert werden.")
     except Exception as e:
         print(f"Fehler beim Konfigurieren von '{tag}': {str(e)}")
 
-# Funktion zum Stoppen der Verarbeitung
-def stop_processing():
-    global processing_active, process, log_entries
-    
-    if processing_active:
-        try:
-            # Beende den laufenden Prozess
-            if process:
-                process.terminate()
-                process = None
-            
-            processing_active = False
-            dpg.set_value("status_text", "Status: Verarbeitung gestoppt")
-            
-            # UI aktualisieren
-            dpg.set_value("process_button", "START")
-            safe_configure_item("stop_button", enabled=False)
-            
-            # Füge Stopp-Meldung zum Log hinzu
-            log_entries.append("STOPP: Verarbeitung wurde manuell beendet.")
-            update_log_display()
-            
-            print("Verarbeitung wurde gestoppt.")
-        except Exception as e:
-            log_error(f"Fehler beim Stoppen der Verarbeitung: {e}", e)
-            dpg.set_value("status_text", "Fehler beim Stoppen der Verarbeitung")
-            
-            # Füge Fehlermeldung zum Log hinzu
-            log_entries.append(f"FEHLER: Konnte Verarbeitung nicht stoppen: {str(e)}")
-            update_log_display()
-
-# Debugging: Überprüfen Sie, ob Pillow in der richtigen Umgebung installiert ist
-def check_pillow_installation():
+# Funktion zum Aktualisieren des GUI-Layouts basierend auf der Anzahl der parallelen Dokumente
+def update_gui_layout():
     try:
-        import subprocess
-        result = subprocess.run([sys.executable, "-m", "pip", "show", "pillow"], capture_output=True, text=True)
-        if result.returncode == 0:
-            print("Pillow ist installiert:")
-            print(result.stdout)
-        else:
-            print("Pillow ist nicht installiert oder nicht in der aktuellen Umgebung verfügbar.")
-            print(result.stderr)
+        # Aktualisiere die Log- und Animationsanzeige
+        for i in range(1, 5):  # Maximal 4 parallele Dokumente
+            if i <= num_parallel_docs:
+                safe_configure_item(f"doc_panel_{i}", show=True)
+            else:
+                safe_configure_item(f"doc_panel_{i}", show=False)
+                
+                # Zurücksetzen der Anzeige für nicht verwendete Panels
+                safe_configure_item(f"doc_progress_{i}", default_value=0.0)
+                if dpg.does_item_exist(f"doc_status_{i}"):
+                    dpg.set_value(f"doc_status_{i}", "Ready")
+                if dpg.does_item_exist(f"doc_title_{i}"):
+                    dpg.set_value(f"doc_title_{i}", "No document")
+                if dpg.does_item_exist(f"doc_id_{i}"):
+                    dpg.set_value(f"doc_id_{i}", "")
+                if dpg.does_item_exist(f"ascii_art_{i}"):
+                    dpg.set_value(f"ascii_art_{i}", ASCII_FACTORY_IDLE)
     except Exception as e:
-        print(f"Fehler beim Überprüfen der Pillow-Installation: {e}")
+        print(f"Fehler beim Aktualisieren des GUI-Layouts: {str(e)}")
 
-# Rufen Sie die Überprüfung beim Start auf
-check_pillow_installation()
+# Funktion zum Aktualisieren der Anzahl der parallelen Dokumente
+def update_parallel_docs(sender, app_data):
+    global num_parallel_docs
+    try:
+        # Sichere Konvertierung und Begrenzung
+        new_value = int(app_data)
+        num_parallel_docs = max(1, min(4, new_value))  # Begrenze auf 1-4
+        
+        # Aktualisiere die .env-Datei
+        try:
+            if env_support:
+                # Prüfe, ob die Datei existiert
+                env_file = find_dotenv()
+                if env_file:
+                    # Verwende die set_key-Funktion aus dotenv
+                    set_key(env_file, "PARALLEL_DOCS", str(num_parallel_docs))
+                    log_entries.append(f"Parallel documents set to {num_parallel_docs}")
+                else:
+                    # Erstelle eine neue .env-Datei
+                    with open(".env", "a") as f:
+                        f.write(f"\nPARALLEL_DOCS={num_parallel_docs}\n")
+                    log_entries.append(f"New .env file created with PARALLEL_DOCS={num_parallel_docs}")
+            else:
+                log_entries.append("Dotenv support not available, setting will not be saved")
+        except Exception as e:
+            log_entries.append(f"Error while saving setting: {str(e)}")
+        
+        # Aktualisiere das GUI-Layout
+        update_gui_layout()
+        update_log_display()
+        
+        # Debug-Ausgabe
+        print(f"Parallel documents set to {num_parallel_docs}")
+    except Exception as e:
+        print(f"Error while updating parallel documents: {str(e)}")
 
-# Hauptprogramm mit umfassender Fehlerbehandlung
-try:
-    # Import der benötigten Bibliotheken
-    print("Importiere Bibliotheken...")
-    import dearpygui.dearpygui as dpg
+# Verbesserte Funktion zum Filtern von Emojis und ANSI-Escape-Sequenzen
+def filter_emojis(text):
+    if not text:
+        return ""
     
-    # Prüfe, ob python-dotenv installiert ist
     try:
-        from dotenv import load_dotenv, find_dotenv, set_key
-        env_support = True
-        print("Dotenv Unterstützung geladen.")
-    except ImportError:
-        env_support = False
-        print("Python-dotenv nicht gefunden, Einstellungsspeicherung deaktiviert.")
-    
-    # Versuch, psutil zu importieren
+        # Entferne ANSI-Escape-Sequenzen (Farbcodes etc.)
+        import re
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        text = ansi_escape.sub('', text)
+        
+        # Ersetze Spinner-Zeichen
+        spinner_chars = {
+            '|': '|',
+            '/': '/',
+            '-': '-',
+            '\\': '\\',
+            '█': '#',
+            '▓': '#',
+            '▒': '#',
+            '░': '#',
+        }
+        
+        # Filtere Emojis und andere problematische Zeichen
+        filtered_text = ""
+        i = 0
+        while i < len(text):
+            char = text[i]
+            
+            # Behandle Spinner-Zeichen
+            if char in spinner_chars:
+                filtered_text += spinner_chars[char]
+                i += 1
+                continue
+                
+            # Behandle Emojis und andere Unicode-Zeichen
+            if ord(char) < 127:  # ASCII-Zeichen
+                filtered_text += char
+            else:
+                # Spezielle Emoji-Ersetzungen
+                if text[i:i+2] == "🤖":
+                    filtered_text += "[BOT]"
+                    i += 2
+                    continue
+                elif text[i:i+2] == "✅":
+                    filtered_text += "[OK]"
+                    i += 2
+                    continue
+                elif text[i:i+2] == "❌":
+                    filtered_text += "[X]"
+                    i += 2
+                    continue
+                elif text[i:i+2] == "⚠️":
+                    filtered_text += "[!]"
+                    i += 2
+                    continue
+                # Ersetze Fortschrittsbalken-Zeichen
+                elif text[i:i+3] == "[█]":
+                    filtered_text += "[#]"
+                    i += 3
+                    continue
+                elif text[i:i+3] == "[▓]":
+                    filtered_text += "[#]"
+                    i += 3
+                    continue
+                elif text[i:i+3] == "[▒]":
+                    filtered_text += "[-]"
+                    i += 3
+                    continue
+                elif text[i:i+3] == "[░]":
+                    filtered_text += "[ ]"
+                    i += 3
+                    continue
+            i += 1
+        
+        # Entferne doppelte Leerzeichen
+        filtered_text = ' '.join(filtered_text.split())
+        
+        return filtered_text
+    except Exception as e:
+        print(f"Error while filtering emojis: {str(e)}")
+        return text  # Im Fehlerfall den Originaltext zurückgeben
+
+# Funktion zum Extrahieren von Dokumenteninformationen aus Logzeilen
+def extract_document_info(line):
     try:
-        import psutil
-        system_monitoring = True
-        print("System-Monitoring verfügbar.")
-    except ImportError:
-        system_monitoring = False
-        print("System-Monitoring nicht verfügbar.")
-    
-    # Hauptskript-Pfad
-    script_path = "main.py"
-    
-    # Prüfe, ob main.py existiert
-    if not os.path.exists(script_path):
-        print(f"WARNUNG: {script_path} nicht gefunden!")
-    else:
-        print(f"Script gefunden: {os.path.abspath(script_path)}")
-    
-    # Alle Einstellungen aus .env
-    settings = {
-        # API-Einstellungen
-        "API_URL": "http://192.168.1.222:8000/api",
-        "API_TOKEN": "",
+        import re
         
-        # Ollama-Einstellungen
-        "OLLAMA_URL": "http://127.0.0.1:11434",
-        "OLLAMA_ENDPOINT": "/api/generate",
+        # Suche nach Dokumenten-ID
+        doc_id_match = re.search(r"Document ID[:\s]+(\d+)", line)
+        if not doc_id_match:
+            doc_id_match = re.search(r"Document[:\s]+(\d+)", line)
         
-        # Modell-Einstellungen
-        "MODEL_NAME": "mixtral",
-        "SECOND_MODEL_NAME": "llama3:8b",
-        "THIRD_MODEL_NAME": "deepseek-coder:6.7b",
-        "NUM_LLM_MODELS": "3",
-        
-        # Paperless-Tag-Einstellungen
-        "LOW_QUALITY_TAG_ID": "91",
-        "HIGH_QUALITY_TAG_ID": "92",
-        
-        # Prozess-Einstellungen
-        "MAX_DOCUMENTS": "1000",
-        "IGNORE_ALREADY_TAGGED": "yes",
-        "CONFIRM_PROCESS": "yes",
-        "RENAME_DOCUMENTS": "yes",
-        
-        # Logging
-        "LOG_LEVEL": "INFO",
-        
-        # Pfade
-        "SCRIPT_PATH": "main.py",
-        "LOG_PATH": "log.txt",
-        "PREVIEW_PATH": "preview.png"
-    }
-    
-    # Lade .env falls vorhanden
-    if env_support:
-        env_file = find_dotenv()
-        if env_file:
-            load_dotenv(env_file)
-            print(f".env Datei gefunden: {env_file}")
+        if doc_id_match:
+            doc_id = int(doc_id_match.group(1))
             
-            # Lade vorhandene Werte
-            for key in settings:
-                value = os.getenv(key)
-                if value:
-                    settings[key] = value
-                    
-            # Aktualisiere Skriptpfad
-            script_path = os.getenv("SCRIPT_PATH", script_path)
-        else:
-            env_file = ".env"
-            print("Keine .env Datei gefunden, werde eine erstellen.")
-    
-    # Verbesserte Prozesssteuerung mit Diagnostik und Emoji-Filterung
-    def toggle_processing(sender, app_data):
-        global processing_active, log_entries, process
+            # Suche nach Fortschritt (1/4, 2/4, 3/4, 4/4)
+            progress_match = re.search(r"processed \((\d+)/(\d+)\)", line)
+            progress = None
+            if progress_match:
+                current = int(progress_match.group(1))
+                total = int(progress_match.group(2))
+                progress = current / total
+            
+            # Suche nach Status
+            status = None
+            if "Quality assessment" in line:
+                status = "Quality assessment"
+            elif "marked as 'Low Quality'" in line:
+                status = "Marked as Low Quality"
+            elif "marked as 'High Quality'" in line:
+                status = "Marked as High Quality"
+            elif "Renaming process" in line:
+                status = "Renaming"
+            elif "Processing completed" in line:
+                status = "Completed"
+            
+            # Suche nach Titel
+            title_match = re.search(r"Title: '([^']+)'", line)
+            title = None
+            if title_match:
+                title = title_match.group(1)
+            
+            return {
+                "doc_id": doc_id,
+                "progress": progress,
+                "status": status,
+                "title": title
+            }
         
-        # Zustand umschalten
-        processing_active = not processing_active
+        return None
+    except Exception as e:
+        if debug_mode:
+            print(f"Error while extracting document information: {str(e)}")
+        return None
+
+# Funktion zum Aktualisieren des Fortschrittsbalkens für ein Dokument
+def update_document_progress(doc_id, progress, status=None, title=None):
+    try:
+        # Speichere den Status
+        if doc_id not in document_statuses:
+            document_statuses[doc_id] = {"progress": 0, "status": "Initializing...", "title": "Unknown"}
         
-        if processing_active:
-            # Überprüfe, ob Skript existiert
-            if not os.path.exists(script_path):
-                log_entries.append(f"FEHLER: Skript {script_path} nicht gefunden!")
-                processing_active = False
-                update_log_display()
-                return
+        if progress is not None:
+            document_statuses[doc_id]["progress"] = progress
+        if status is not None:
+            document_statuses[doc_id]["status"] = status
+        if title is not None:
+            document_statuses[doc_id]["title"] = title
+        
+        # Finde den Panel-Index für dieses Dokument
+        panel_index = None
+        for i in range(1, 5):
+            if dpg.does_item_exist(f"doc_id_{i}") and dpg.get_value(f"doc_id_{i}") == str(doc_id):
+                panel_index = i
+                break
+        
+        # Wenn kein Panel gefunden, suche ein freies Panel
+        if panel_index is None:
+            for i in range(1, num_parallel_docs + 1):  # Nur bis zur konfigurierten Anzahl suchen
+                if dpg.does_item_exist(f"doc_id_{i}") and (not dpg.get_value(f"doc_id_{i}") or dpg.get_value(f"doc_id_{i}") == ""):
+                    panel_index = i
+                    dpg.set_value(f"doc_id_{i}", str(doc_id))
+                    break
+        
+        # Wenn immer noch kein Panel gefunden, nehme das erste Panel
+        if panel_index is None and num_parallel_docs > 0 and dpg.does_item_exist("doc_id_1"):
+            panel_index = 1
+            dpg.set_value("doc_id_1", str(doc_id))
+        
+        # Aktualisiere das Panel, wenn gefunden
+        if panel_index is not None:
+            safe_configure_item(f"doc_progress_{panel_index}", default_value=document_statuses[doc_id]["progress"])
+            if dpg.does_item_exist(f"doc_status_{panel_index}"):
+                dpg.set_value(f"doc_status_{panel_index}", document_statuses[doc_id]["status"])
+            if dpg.does_item_exist(f"doc_title_{panel_index}"):
+                dpg.set_value(f"doc_title_{panel_index}", document_statuses[doc_id]["title"])
             
-            # Lösche alte Log-Datei
-            try:
-                if os.path.exists(log_file_path):
-                    with open(log_file_path, "w") as f:
-                        f.write("")
-            except Exception as e:
-                log_entries.append(f"Warnung: Konnte Log-Datei nicht leeren: {str(e)}")
-            
-            # Debug-Info
-            if debug_mode:
-                log_entries.append(f"DEBUG: Starte Skript: {os.path.abspath(script_path)}")
-                log_entries.append(f"DEBUG: Arbeitsverzeichnis: {os.getcwd()}")
-                
-                # Zeige Umgebungsvariablen
-                log_entries.append("DEBUG: Wichtige Umgebungsvariablen:")
-                for key in ["API_URL", "OLLAMA_URL", "MODEL_NAME"]:
-                    log_entries.append(f"  - {key}={os.getenv(key, 'nicht gesetzt')}")
-            
-            try:
-                # Beispiel: ID des Dokuments, das verarbeitet wird
-                document_id = 83291  # Diese ID sollte dynamisch aus der Verarbeitung stammen
-                
-                # UI aktualisieren - OHNE configure_item für stop_button
-                dpg.set_value("process_button", "STOPP")
-                dpg.set_value("status_text", "Status: Aktiv")
-                
-                # Starte main.py mit erweiterten Optionen
-                # Kommandozeilen-Argument für Test-Modi
-                cmd = [sys.executable, script_path, "--no-confirm"]
-                
-                log_entries.append(f"Starte Prozess: {' '.join(cmd)}")
-                update_log_display()
-                
-                # Angepasste Umgebung mit UTF-8 Unterstützung
-                env = os.environ.copy()
-                # Setze PYTHONIOENCODING auf UTF-8, um Unicode-Fehler zu vermeiden
-                env["PYTHONIOENCODING"] = "utf-8"
-                
-                # Starte Prozess mit vollständiger Umgebung
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                    universal_newlines=True,
-                    env=env,  # Modifizierte Umgebung mit UTF-8
-                    errors='replace'  # Wichtig: Ersetze nicht darstellbare Zeichen
-                )
-                
-                # Beginne mit dem Lesen der Ausgabe
-                def read_output():
+            # Aktualisiere ASCII-Art basierend auf dem Status
+            if dpg.does_item_exist(f"ascii_art_{panel_index}"):
+                # Prüfe, ob progress None ist
+                if progress is not None and progress < 1.0:
+                    dpg.set_value(f"ascii_art_{panel_index}", ASCII_FACTORY_PROCESSING)
+                elif progress is not None and progress >= 1.0:
+                    dpg.set_value(f"ascii_art_{panel_index}", ASCII_FACTORY_COMPLETE)
+    except Exception as e:
+        print(f"Error while updating document progress: {str(e)}")
+
+# Verbesserte Funktion zum Lesen der Prozessausgabe
+def read_output():
+    try:
+        if process and process.poll() is None:
+            # Erstelle einen Thread, der kontinuierlich die Ausgabe liest
+            def read_stream():
+                try:
                     while process and process.poll() is None:
                         try:
                             line = process.stdout.readline()
@@ -521,123 +396,81 @@ try:
                                 
                                 # Logge bereinigte Prozessausgabe
                                 log_entries.append(clean_line.strip())
-                                update_log_display()
+                                
+                                # Extrahiere Dokumenteninformationen
+                                try:
+                                    info = extract_document_info(clean_line)
+                                    if info and "doc_id" in info:
+                                        # Aktualisiere Dokumentenstatus
+                                        doc_id = info["doc_id"]
+                                        progress = info.get("progress")
+                                        status = info.get("status")
+                                        title = info.get("title")
+                                        update_document_progress(doc_id, progress, status, title)
+                                except Exception as e:
+                                    if debug_mode:
+                                        print(f"Error while extracting document information: {str(e)}")
+                                
+                                # Aktualisiere die GUI regelmäßig, aber nicht zu oft
+                                # (zu häufige Updates können die GUI verlangsamen)
+                                if len(log_entries) % 5 == 0:  # Alle 5 Zeilen aktualisieren
+                                    update_log_display()
+                            else:
+                                # Keine Ausgabe mehr, kurz warten
+                                time.sleep(0.1)
                         except Exception as e:
                             if debug_mode:
-                                log_entries.append(f"Fehler beim Lesen der Ausgabe: {str(e)}")
-                            break
+                                print(f"Error while reading output: {str(e)}")
+                            time.sleep(0.5)  # Warte bei Fehlern etwas länger
                 
-                # Starte separaten Thread für das Lesen der Ausgabe
-                import threading
-                threading.Thread(target=read_output, daemon=True).start()
-                
-            except Exception as e:
-                log_entries.append(f"Fehler beim Starten: {str(e)}")
-                processing_active = False
-                dpg.set_value("process_button", "START")
-                update_log_display()
-        else:
-            # Prozess beenden
-            if process and process.poll() is None:
-                try:
-                    process.terminate()
-                    log_entries.append(f"Prozess wird beendet...")
+                    # Prozess beendet
+                    if process:
+                        # Lese verbleibende Ausgabe
+                        remaining_output = process.stdout.read()
+                        if remaining_output:
+                            lines = remaining_output.splitlines()
+                            for line in lines:
+                                clean_line = filter_emojis(line)
+                                log_entries.append(clean_line.strip())
+                        
+                        log_entries.append(f"Process ended with exit code: {process.returncode}")
+                        
+                        # Aktualisiere GUI im Hauptthread
+                        dpg.set_value("process_button", "START")
+                        dpg.set_value("status_text", "Status: Ready")
+                        safe_configure_item("stop_button", enabled=False)
+                        
+                        # Setze processing_active auf False
+                        global processing_active
+                        processing_active = False
+                        
+                        # Finale Aktualisierung der Log-Anzeige
+                        update_log_display()
                 except Exception as e:
-                    log_entries.append(f"Fehler beim Beenden des Prozesses: {str(e)}")
+                    print(f"Critical error in read thread: {str(e)}")
             
-            # UI aktualisieren
-            dpg.set_value("process_button", "START")
-            dpg.set_value("status_text", "Status: Bereit")
-            update_log_display()
-    
-    # Funktion zum Aktualisieren der ASCII-Art basierend auf dem Status
-    def update_ascii_art(status="idle", document_info=None):
-        if status == "processing":
-            # Zeige die Verarbeitungs-Animation
-            ascii_art = ASCII_FACTORY_PROCESSING
+            # Starte Thread für kontinuierliches Lesen
+            read_thread = threading.Thread(target=read_stream, daemon=True)
+            read_thread.start()
             
-            # Füge Dokumenteninformationen hinzu, wenn verfügbar
-            if document_info:
-                doc_info_text = f"\n    Verarbeite: {document_info}"
-                ascii_art += doc_info_text
-        elif status == "complete":
-            # Zeige die Abschluss-Animation
-            ascii_art = ASCII_FACTORY_COMPLETE
-        else:
-            # Zeige die Idle-Animation
-            ascii_art = ASCII_FACTORY_IDLE
-        
-        # Aktualisiere die ASCII-Art in der GUI
-        if dpg.does_item_exist("ascii_art"):
-            dpg.set_value("ascii_art", ascii_art)
-
-    # Funktion zum Extrahieren von Dokumenteninformationen aus den Logs
-    def extract_document_info(log_line):
-        # Suche nach Mustern wie "Verarbeite Dokument X/Y (ID: Z)"
-        import re
-        
-        # Verschiedene Muster für Dokumenteninformationen
-        patterns = [
-            r"Verarbeite Dokument (\d+)/(\d+) \(ID: (\d+)\)",
-            r"==== Verarbeite Dokument ID: (\d+) ====",
-            r"Aktueller Titel: '([^']+)'"
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, log_line)
-            if match:
-                if pattern == patterns[0]:  # Erstes Muster
-                    return f"Dokument {match.group(1)}/{match.group(2)} (ID: {match.group(3)})"
-                elif pattern == patterns[1]:  # Zweites Muster
-                    return f"Dokument ID: {match.group(1)}"
-                elif pattern == patterns[2]:  # Drittes Muster
-                    return f"'{match.group(1)}'"
-        
+            # Rückgabe des Threads für mögliche spätere Referenz
+            return read_thread
+        return None
+    except Exception as e:
+        print(f"Error while starting read thread: {str(e)}")
         return None
 
-    # Erweiterte Funktion zum Aktualisieren des Logs mit ASCII-Art-Update
-    def update_log_display():
+# Funktion zum Aktualisieren des Logs
+def update_log_display():
+    try:
         if dpg.does_item_exist("log_area"):
             log_lines = []
-            document_info = None
             
             # Kombiniere direkte Prozessausgabe mit Logdatei
-            # Zeige zuerst die internen Logs (z.B. Debug-Infos)
             if log_entries:
                 # Filtere Emojis aus allen Logeinträgen
-                filtered_entries = [filter_emojis(entry) for entry in log_entries[-15:]]
+                filtered_entries = [entry for entry in log_entries[-30:]]
                 log_lines.extend(filtered_entries)
-                
-                # Suche nach Dokumenteninformationen in den letzten Logeinträgen
-                for entry in reversed(filtered_entries):
-                    info = extract_document_info(entry)
-                    if info:
-                        document_info = info
-                        break
-            
-            # Dann versuche, die tatsächliche Logdatei zu lesen
-            try:
-                if os.path.exists(log_file_path):
-                    with open(log_file_path, "r", encoding="utf-8", errors="replace") as f:
-                        file_lines = f.readlines()
-                        
-                    if file_lines:
-                        # Füge bis zu 15 Zeilen aus der Datei hinzu
-                        file_recent = file_lines[-15:] if len(file_lines) > 15 else file_lines
-                        # Filtere Emojis aus allen Logzeilen
-                        filtered_lines = [filter_emojis(line.strip()) for line in file_recent]
-                        log_lines.extend(filtered_lines)
-                        
-                        # Suche nach Dokumenteninformationen in den Logzeilen
-                        if not document_info:
-                            for line in reversed(filtered_lines):
-                                info = extract_document_info(line)
-                                if info:
-                                    document_info = info
-                                    break
-            except Exception as e:
-                if debug_mode:
-                    log_lines.append(f"Log-Datei-Fehler: {str(e)}")
             
             # Beschränke auf maximal 30 Zeilen insgesamt
             if len(log_lines) > 30:
@@ -647,83 +480,272 @@ try:
             log_text = "\n".join(log_lines)
             dpg.set_value("log_area", log_text)
             
-            # Aktualisiere ASCII-Art basierend auf dem Status
-            if processing_active:
-                update_ascii_art("processing", document_info)
-            elif "STOPP:" in log_text or "Verarbeitung abgeschlossen" in log_text:
-                update_ascii_art("complete")
-            else:
-                update_ascii_art("idle")
-            
             # Scrolle zum Ende
             try:
                 dpg.set_y_scroll("log_area", -1.0)
-            except:
-                pass
+            except Exception as e:
+                if debug_mode:
+                    print(f"Error while scrolling: {str(e)}")
+    except Exception as e:
+        print(f"Error while updating log display: {str(e)}")
+
+# Funktion zum Aktualisieren der Systeminfos
+def update_system_info():
+    if not system_monitoring:
+        return
     
-    # Aktualisiere Systeminfo
-    def update_system_info():
-        if system_monitoring and dpg.does_item_exist("system_info"):
+    try:
+        # CPU-Auslastung
+        cpu_percent = psutil.cpu_percent()
+        if dpg.does_item_exist("cpu_usage"):
+            dpg.set_value("cpu_usage", f"CPU: {cpu_percent:.1f}%")
+        
+        # RAM-Auslastung
+        ram = psutil.virtual_memory()
+        ram_used_gb = ram.used / (1024 ** 3)
+        ram_total_gb = ram.total / (1024 ** 3)
+        if dpg.does_item_exist("ram_usage"):
+            dpg.set_value("ram_usage", f"RAM: {ram_used_gb:.1f} GB / {ram_total_gb:.1f} GB")
+        
+        # Festplattennutzung
+        disk = psutil.disk_usage('/')
+        disk_used_gb = disk.used / (1024 ** 3)
+        disk_total_gb = disk.total / (1024 ** 3)
+        if dpg.does_item_exist("disk_usage"):
+            dpg.set_value("disk_usage", f"Disk: {disk_used_gb:.1f} GB / {disk_total_gb:.1f} GB")
+    except Exception as e:
+        print(f"Error while updating system information: {str(e)}")
+
+# Funktion zum Speichern der Einstellungen
+def save_settings():
+    if not env_support:
+        return
+    
+    try:
+        # Sammle alle Einstellungen
+        settings = {}
+        for item in dpg.get_all_items():
+            if dpg.get_item_alias(item).startswith("setting_"):
+                key = dpg.get_item_alias(item)[8:]  # Entferne "setting_" Präfix
+                value = dpg.get_value(item)
+                
+                # Konvertiere Boolean zu "yes"/"no"
+                if isinstance(value, bool):
+                    value = "yes" if value else "no"
+                
+                settings[key] = str(value)
+        
+        # Speichere in .env-Datei
+        env_file = find_dotenv()
+        if not env_file:
+            # Erstelle neue .env-Datei
+            with open(".env", "w") as f:
+                for key, value in settings.items():
+                    f.write(f"{key}={value}\n")
+        else:
+            # Aktualisiere bestehende .env-Datei
+            for key, value in settings.items():
+                set_key(env_file, key, value)
+        
+        log_entries.append("Settings saved")
+        update_log_display()
+    except Exception as e:
+        log_entries.append(f"Error while saving settings: {str(e)}")
+        update_log_display()
+
+# Funktion zum Starten/Stoppen der Verarbeitung
+def toggle_processing(sender, app_data):
+    global processing_active, log_entries, process
+    
+    try:
+        processing_active = not processing_active
+        
+        if processing_active:
+            # Check if script exists
+            script_path = os.path.abspath("main.py")
+            if not os.path.exists(script_path):
+                log_entries.append(f"WARNING: Script {script_path} not found!")
+                processing_active = False
+                update_log_display()
+                return
+            
+            # Clear old log file
             try:
-                cpu = psutil.cpu_percent()
-                ram = psutil.virtual_memory()
-                
-                # Zeige auch Prozessstatus
-                if process and process.poll() is None:
-                    try:
-                        # Versuche, Prozessinformationen zu erhalten
-                        proc_info = psutil.Process(process.pid)
-                        proc_cpu = proc_info.cpu_percent(interval=0.1)
-                        proc_mem = proc_info.memory_info().rss / (1024 * 1024)  # MB
-                        proc_status = f"[PID: {process.pid}]\nCPU: {proc_cpu:.1f}%\nRAM: {proc_mem:.1f} MB"
-                    except:
-                        proc_status = f"[PID: {process.pid}] Läuft"
-                else:
-                    proc_status = "Gestoppt"
-                
-                info_text = f"CPU: {cpu:.1f}%\nRAM: {ram.percent:.1f}%\n\nProzess: {proc_status}"
-                dpg.set_value("system_info", info_text)
-            except:
-                dpg.set_value("system_info", "System-Info nicht verfügbar")
-    
-    # Speichere alle .env Einstellungen
-    def save_settings(sender, app_data):
-        if not env_support:
-            log_entries.append(f"[{datetime.now().strftime('%H:%M:%S')}] Einstellungen können nicht gespeichert werden (dotenv fehlt)")
-            update_log_display()
-            return
+                if os.path.exists(log_file_path):
+                    with open(log_file_path, "w") as f:
+                        f.write("")
+            except Exception as e:
+                log_entries.append(f"Warning: Could not clear log file: {str(e)}")
             
+            # Debug info
+            if debug_mode:
+                log_entries.append(f"DEBUG: Start script: {os.path.abspath(script_path)}")
+                log_entries.append(f"DEBUG: Working directory: {os.getcwd()}")
+                log_entries.append(f"DEBUG: Parallel documents: {num_parallel_docs}")
+                
+                # Show environment variables
+                log_entries.append("DEBUG: Important environment variables:")
+                for key in ["API_URL", "OLLAMA_URL", "MODEL_NAME", "PARALLEL_DOCS"]:
+                    log_entries.append(f"  - {key}={os.getenv(key, 'not set')}")
+            
+            try:
+                # Update UI
+                dpg.set_value("process_button", "STOP")
+                dpg.set_value("status_text", "Status: Active")
+                safe_configure_item("stop_button", enabled=True)
+                
+                # Reset all document panels
+                for i in range(1, 5):
+                    if dpg.does_item_exist(f"doc_id_{i}"):
+                        dpg.set_value(f"doc_id_{i}", "")
+                    if dpg.does_item_exist(f"doc_title_{i}"):
+                        dpg.set_value(f"doc_title_{i}", "No document")
+                    if dpg.does_item_exist(f"doc_status_{i}"):
+                        dpg.set_value(f"doc_status_{i}", "Ready")
+                    safe_configure_item(f"doc_progress_{i}", default_value=0.0)
+                    if dpg.does_item_exist(f"ascii_art_{i}"):
+                        dpg.set_value(f"ascii_art_{i}", ASCII_FACTORY_IDLE)
+                
+                # Start main.py with extended options
+                cmd = [sys.executable, script_path, "--no-confirm"]
+                
+                log_entries.append(f"Start process: {' '.join(cmd)}")
+                update_log_display()
+                
+                # Modified environment with UTF-8 support
+                env = os.environ.copy()
+                env["PYTHONIOENCODING"] = "utf-8"
+                env["PARALLEL_DOCS"] = str(num_parallel_docs)
+                
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True,
+                    env=env,
+                    errors='replace'
+                )
+                
+                read_thread = read_output()
+                if not read_thread:
+                    log_entries.append("Error starting read thread!")
+                    processing_active = False
+                    dpg.set_value("process_button", "START")
+                    safe_configure_item("stop_button", enabled=False)
+                    update_log_display()
+                
+            except Exception as e:
+                log_entries.append(f"Error starting process: {str(e)}")
+                processing_active = False
+                dpg.set_value("process_button", "START")
+                safe_configure_item("stop_button", enabled=False)
+                update_log_display()
+        else:
+            # End process
+            if process and process.poll() is None:
+                try:
+                    process.terminate()
+                    log_entries.append("Process terminated...")
+                except Exception as e:
+                    log_entries.append(f"Error while terminating process: {str(e)}")
+            
+            # Update UI
+            dpg.set_value("process_button", "START")
+            dpg.set_value("status_text", "Status: Ready")
+            safe_configure_item("stop_button", enabled=False)
+            update_log_display()
+    except Exception as e:
+        print(f"Critical error in toggle_processing: {str(e)}")
         try:
-            # Sammle alle Einstellungswerte aus der UI
-            for key in settings:
-                if dpg.does_item_exist(f"setting_{key}"):
-                    # Bei Checkboxen von Boolean zu Ja/Nein konvertieren
-                    if key in ["IGNORE_ALREADY_TAGGED", "CONFIRM_PROCESS", "RENAME_DOCUMENTS"]:
-                        value = "yes" if dpg.get_value(f"setting_{key}") else "no"
-                    else:
-                        value = dpg.get_value(f"setting_{key}")
-                    
-                    # In .env schreiben
-                    set_key(env_file, key, str(value))
-                    settings[key] = str(value)
+            dpg.set_value("process_button", "START")
+            dpg.set_value("status_text", f"Status: Error - {str(e)}")
+            safe_configure_item("stop_button", enabled=False)
+            processing_active = False
+        except:
+            pass
+
+# Funktion zum Protokollieren von Fehlern
+def log_error(message, exception=None):
+    try:
+        with open("error_log.txt", "a") as f:
+            f.write("\n-----------------------------------\n")
+            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
+            if exception:
+                f.write(f"Exception: {str(exception)}\n")
+                import traceback
+                f.write(traceback.format_exc())
+            f.write("\n-----------------------------------\n")
+    except:
+        print("Error writing error log file")
+
+# Funktion zum Abrufen der Bildschirmgröße
+def get_display_size():
+    import tkinter as tk
+    root = tk.Tk()
+    root.withdraw()  # Verstecke das Hauptfenster
+    width = root.winfo_screenwidth()
+    height = root.winfo_screenheight()
+    root.destroy()
+    return width, height
+
+# Funktion zum Stoppen der Verarbeitung
+def stop_processing(sender, app_data):
+    global processing_active, process
+    try:
+        if process and process.poll() is None:
+            process.terminate()
+            log_entries.append("Process terminated...")
+            update_log_display()
             
-            log_entries.append(f"[{datetime.now().strftime('%H:%M:%S')}] Alle Einstellungen gespeichert")
-            update_log_display()
-        except Exception as e:
-            log_entries.append(f"[{datetime.now().strftime('%H:%M:%S')}] Fehler beim Speichern: {str(e)}")
-            update_log_display()
+            # UI aktualisieren
+            dpg.set_value("process_button", "START")
+            dpg.set_value("status_text", "Status: Ready")
+            safe_configure_item("stop_button", enabled=False)
+            processing_active = False
+    except Exception as e:
+        log_entries.append(f"Error while terminating process: {str(e)}")
+        update_log_display()
+
+# Hauptprogramm
+try:
+    # Lade Einstellungen
+    settings = {}
+    if env_support:
+        # Lade alle Umgebungsvariablen
+        for key, value in os.environ.items():
+            settings[key] = value
+        
+        # Lade spezifische Einstellungen aus .env
+        settings["API_URL"] = os.getenv("API_URL", "http://localhost:8000/api")
+        settings["API_TOKEN"] = os.getenv("API_TOKEN", "")
+        settings["OLLAMA_URL"] = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        settings["OLLAMA_ENDPOINT"] = os.getenv("OLLAMA_ENDPOINT", "/api/generate")
+        settings["MODEL_NAME"] = os.getenv("MODEL_NAME", "llama2")
+        settings["SECOND_MODEL_NAME"] = os.getenv("SECOND_MODEL_NAME", "")
+        settings["THIRD_MODEL_NAME"] = os.getenv("THIRD_MODEL_NAME", "")
+        settings["NUM_LLM_MODELS"] = os.getenv("NUM_LLM_MODELS", "1")
+        settings["LOW_QUALITY_TAG_ID"] = os.getenv("LOW_QUALITY_TAG_ID", "1")
+        settings["HIGH_QUALITY_TAG_ID"] = os.getenv("HIGH_QUALITY_TAG_ID", "2")
+        settings["MAX_DOCUMENTS"] = os.getenv("MAX_DOCUMENTS", "10")
+        settings["IGNORE_ALREADY_TAGGED"] = os.getenv("IGNORE_ALREADY_TAGGED", "yes")
+        settings["CONFIRM_PROCESS"] = os.getenv("CONFIRM_PROCESS", "yes")
+        settings["RENAME_DOCUMENTS"] = os.getenv("RENAME_DOCUMENTS", "yes")
+    
+    # Hauptskript-Pfad
+    script_path = "main.py"
     
     # Bestimme optimale 16:9 Fenstergröße
     width, height = get_display_size()
     
     # Stelle sicher, dass es immer ein genaues 16:9 Verhältnis hat
-    # (Rundungsfehler korrigieren)
     height = int(width * 9/16)
     
-    print(f"Verwende 16:9 Fenstergröße: {width}x{height}")
+    print(f"Using 16:9 window size: {width}x{height}")
     
     # DearPyGui initialisieren
-    print("Erstelle GUI...")
+    print("Creating GUI...")
     dpg.create_context()
     
     # Berechne die Spaltenbreiten proportional zur Gesamtbreite
@@ -732,10 +754,10 @@ try:
     right_col_width = int(width * 0.50)     # 50% der Breite
     content_height = height - 50            # Berücksichtigt Titelleiste
     
-    with dpg.window(label="DokumentenKI", tag="main_window", width=width, height=height):
+    with dpg.window(label="DocumentAI", tag="main_window", width=width, height=height):
         with dpg.tab_bar():
             # Tab: Verarbeitung
-            with dpg.tab(label="Verarbeitung"):
+            with dpg.tab(label="Processing"):
                 with dpg.group(horizontal=True):
                     # Linke Seite - Status
                     with dpg.child_window(width=left_col_width, height=content_height):
@@ -743,20 +765,20 @@ try:
                         dpg.add_separator()
                         
                         # Status
-                        safe_add_text("Status: Bereit", tag="status_text")
+                        safe_add_text("Status: Ready", tag="status_text")
                         
                         # System-Info
                         if system_monitoring:
-                            safe_add_text("SYSTEM-INFO", color=[255, 255, 0])
+                            safe_add_text("SYSTEM INFO", color=[255, 255, 0])
                             dpg.add_separator()
                             safe_add_text("CPU: 0%\nRAM: 0%", tag="system_info")
                         
                         # Diagnose-Bereich
-                        safe_add_text("DIAGNOSE", color=[255, 255, 0])
+                        safe_add_text("DIAGNOSTICS", color=[255, 255, 0])
                         dpg.add_separator()
                         
                         # Direkter Aufruf
-                        safe_add_text("Skript-Pfad:")
+                        safe_add_text("Script Path:")
                         dpg.add_input_text(
                             default_value=script_path,
                             tag="script_path_input",
@@ -764,7 +786,7 @@ try:
                         )
                         
                         # Argumente
-                        dpg.add_text("Argumente:")
+                        dpg.add_text("Arguments:")
                         dpg.add_input_text(
                             default_value="--no-confirm",
                             tag="script_args_input",
@@ -773,7 +795,7 @@ try:
                         
                         # Debug-Modus Checkbox
                         dpg.add_checkbox(
-                            label="Debug-Modus",
+                            label="Debug Mode",
                             default_value=debug_mode,
                             callback=lambda sender, data: globals().update(debug_mode=data)
                         )
@@ -781,7 +803,7 @@ try:
                     # Mittlerer Teil - Verarbeitung & Log
                     with dpg.child_window(width=middle_col_width, height=content_height):
                         # Überschrift
-                        safe_add_text("DOKUMENTENVERARBEITUNG", color=[255, 255, 0])
+                        safe_add_text("DOCUMENT PROCESSING", color=[255, 255, 0])
                         dpg.add_separator()
                         
                         # Buttons in einer Gruppe
@@ -816,25 +838,70 @@ try:
                             tag="log_area"
                         )
                     
-                    # Rechter Teil - ASCII-Art statt Dokumentenvorschau
+                    # Rechter Teil - Dokumentenpanels statt einer einzelnen ASCII-Art
                     with dpg.child_window(width=right_col_width, height=content_height):
-                        safe_add_text("DOKUMENTENFABRIK", color=[255, 255, 0])
+                        safe_add_text("DOCUMENT PROCESSING", color=[255, 255, 0])
                         dpg.add_separator()
                         
-                        # ASCII-Art-Bereich
-                        dpg.add_text(ASCII_FACTORY_IDLE, tag="ascii_art", wrap=0)
+                        # Slider für parallele Dokumente
+                        dpg.add_slider_int(
+                            label="Parallel documents", 
+                            min_value=1, 
+                            max_value=4, 
+                            default_value=num_parallel_docs,
+                            callback=update_parallel_docs,
+                            width=right_col_width-40,
+                            tag="parallel_docs_slider"
+                        )
                         
-                        # Statusbereich unter der ASCII-Art
                         dpg.add_separator()
-                        safe_add_text("Status: Bereit", tag="factory_status")
+                        
+                        # Erstelle Panels für jedes parallele Dokument
+                        panel_height = (content_height - 100) // 4  # Höhe pro Panel
+                        
+                        for i in range(1, 5):  # Maximal 4 parallele Dokumente
+                            with dpg.collapsing_header(
+                                label=f"Document #{i}", 
+                                default_open=True,
+                                tag=f"doc_panel_{i}",
+                                show=(i <= num_parallel_docs)
+                            ):
+                                # Verstecktes Feld für Dokument-ID
+                                dpg.add_input_text(
+                                    default_value="",
+                                    tag=f"doc_id_{i}",
+                                    show=False
+                                )
+                                
+                                # Titel des Dokuments
+                                safe_add_text("Title:", tag=f"doc_title_label_{i}")
+                                safe_add_text("No document", tag=f"doc_title_{i}", color=[200, 200, 200])
+                                
+                                # Fortschrittsbalken
+                                dpg.add_progress_bar(
+                                    default_value=0.0,
+                                    overlay="0%",
+                                    width=right_col_width-40,
+                                    height=20,
+                                    tag=f"doc_progress_{i}"
+                                )
+                                
+                                # Status
+                                safe_add_text("Status:", tag=f"doc_status_label_{i}")
+                                safe_add_text("Ready", tag=f"doc_status_{i}", color=[200, 200, 200])
+                                
+                                # ASCII-Art für dieses Dokument
+                                dpg.add_text(ASCII_FACTORY_IDLE, tag=f"ascii_art_{i}", wrap=0)
+                                
+                                dpg.add_separator()
             
             # Tab: Einstellungen
-            with dpg.tab(label="Einstellungen"):
+            with dpg.tab(label="Settings"):
                 with dpg.child_window(width=width-20, height=content_height, horizontal_scrollbar=True):
                     if env_support:
                         input_width = width - 40
                         
-                        with dpg.collapsing_header(label="API EINSTELLUNGEN", default_open=True):
+                        with dpg.collapsing_header(label="API SETTINGS", default_open=True):
                             dpg.add_separator()
                             
                             # API URL
@@ -853,7 +920,7 @@ try:
                                 width=input_width
                             )
                         
-                        with dpg.collapsing_header(label="OLLAMA EINSTELLUNGEN", default_open=True):
+                        with dpg.collapsing_header(label="OLLAMA SETTINGS", default_open=True):
                             dpg.add_separator()
                             
                             safe_add_text("Ollama URL:")
@@ -870,31 +937,31 @@ try:
                                 width=input_width
                             )
                         
-                        with dpg.collapsing_header(label="KI-MODELL EINSTELLUNGEN", default_open=True):
+                        with dpg.collapsing_header(label="MODEL SETTINGS", default_open=True):
                             dpg.add_separator()
                             
-                            safe_add_text("Primäres Modell:")
+                            safe_add_text("Primary model:")
                             dpg.add_input_text(
                                 default_value=settings["MODEL_NAME"],
                                 tag="setting_MODEL_NAME",
                                 width=input_width
                             )
                             
-                            safe_add_text("Sekundäres Modell:")
+                            safe_add_text("Secondary model:")
                             dpg.add_input_text(
                                 default_value=settings["SECOND_MODEL_NAME"],
                                 tag="setting_SECOND_MODEL_NAME",
                                 width=input_width
                             )
                             
-                            safe_add_text("Tertiäres Modell:")
+                            safe_add_text("Tertiary model:")
                             dpg.add_input_text(
                                 default_value=settings["THIRD_MODEL_NAME"],
                                 tag="setting_THIRD_MODEL_NAME",
                                 width=input_width
                             )
                             
-                            safe_add_text("Anzahl zu verwendender Modelle:")
+                            safe_add_text("Number of models to use:")
                             dpg.add_slider_int(
                                 default_value=int(settings["NUM_LLM_MODELS"]),
                                 min_value=1,
@@ -903,27 +970,27 @@ try:
                                 width=input_width
                             )
                         
-                        with dpg.collapsing_header(label="TAG EINSTELLUNGEN", default_open=True):
+                        with dpg.collapsing_header(label="TAG SETTINGS", default_open=True):
                             dpg.add_separator()
                             
-                            safe_add_text("Tag ID für niedrige Qualität:")
+                            safe_add_text("Tag ID for low quality:")
                             dpg.add_input_text(
                                 default_value=settings["LOW_QUALITY_TAG_ID"],
                                 tag="setting_LOW_QUALITY_TAG_ID",
                                 width=input_width
                             )
                             
-                            safe_add_text("Tag ID für hohe Qualität:")
+                            safe_add_text("Tag ID for high quality:")
                             dpg.add_input_text(
                                 default_value=settings["HIGH_QUALITY_TAG_ID"],
                                 tag="setting_HIGH_QUALITY_TAG_ID",
                                 width=input_width
                             )
                         
-                        with dpg.collapsing_header(label="PROZESS EINSTELLUNGEN", default_open=True):
+                        with dpg.collapsing_header(label="PROCESS SETTINGS", default_open=True):
                             dpg.add_separator()
                             
-                            safe_add_text("Maximale Dokumente:")
+                            safe_add_text("Maximum documents:")
                             dpg.add_input_text(
                                 default_value=settings["MAX_DOCUMENTS"],
                                 tag="setting_MAX_DOCUMENTS",
@@ -931,27 +998,27 @@ try:
                             )
                             
                             dpg.add_checkbox(
-                                label="Bereits getaggte Dokumente ignorieren",
+                                label="Ignore already tagged documents",
                                 default_value=settings["IGNORE_ALREADY_TAGGED"].lower() == "yes",
                                 tag="setting_IGNORE_ALREADY_TAGGED"
                             )
                             
                             dpg.add_checkbox(
-                                label="Verarbeitung bestätigen",
+                                label="Confirm processing",
                                 default_value=settings["CONFIRM_PROCESS"].lower() == "yes",
                                 tag="setting_CONFIRM_PROCESS"
                             )
                             
                             dpg.add_checkbox(
-                                label="Dokumente automatisch umbenennen",
+                                label="Automatically rename documents",
                                 default_value=settings["RENAME_DOCUMENTS"].lower() == "yes",
                                 tag="setting_RENAME_DOCUMENTS"
                             )
                         
-                        with dpg.collapsing_header(label="LOGGING EINSTELLUNGEN", default_open=True):
+                        with dpg.collapsing_header(label="LOGGING SETTINGS", default_open=True):
                             dpg.add_separator()
                             
-                            safe_add_text("Log-Level:")
+                            safe_add_text("Log level:")
                             dpg.add_combo(
                                 items=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                                 default_value=settings["LOG_LEVEL"],
@@ -959,24 +1026,24 @@ try:
                                 width=input_width
                             )
                         
-                        with dpg.collapsing_header(label="PFAD EINSTELLUNGEN", default_open=True):
+                        with dpg.collapsing_header(label="PATH SETTINGS", default_open=True):
                             dpg.add_separator()
                             
-                            safe_add_text("Skript-Pfad:")
+                            safe_add_text("Script path:")
                             dpg.add_input_text(
                                 default_value=settings.get("SCRIPT_PATH", os.path.abspath("")),
                                 tag="setting_SCRIPT_PATH",
                                 width=input_width
                             )
                             
-                            safe_add_text("Log-Pfad:")
+                            safe_add_text("Log path:")
                             dpg.add_input_text(
                                 default_value=settings.get("LOG_PATH", os.path.abspath("log.txt")),
                                 tag="setting_LOG_PATH",
                                 width=input_width
                             )
                             
-                            safe_add_text("Vorschau-Pfad:")
+                            safe_add_text("Preview path:")
                             dpg.add_input_text(
                                 default_value=settings.get("PREVIEW_PATH", os.path.abspath("preview.png")),
                                 tag="setting_PREVIEW_PATH",
@@ -986,42 +1053,42 @@ try:
                         # Speichern-Button
                         dpg.add_spacer(height=20)
                         dpg.add_button(
-                            label="ALLE EINSTELLUNGEN SPEICHERN",
+                            label="SAVE ALL SETTINGS",
                             callback=save_settings,
                             width=input_width,
                             height=60
                         )
                     else:
-                        safe_add_text("Einstellungen nicht verfügbar.\nPython-dotenv nicht installiert.")
+                        safe_add_text("Settings not available.\nPython-dotenv not installed.")
             
-            # Tab: Über
-            with dpg.tab(label="Über"):
+            # Tab: About
+            with dpg.tab(label="About"):
                 with dpg.child_window(width=width-20, height=content_height):
-                    safe_add_text("DokumentenKI System", color=[255, 255, 0], size=40)
+                    safe_add_text("DocumentAI System", color=[255, 255, 0], size=40)
                     dpg.add_separator()
                     dpg.add_spacer(height=20)
                     safe_add_text(
                         "Version: 1.0\n\n"
-                        "Dieses Programm verarbeitet Dokumente mit KI.\n\n"
-                        "© 2023 Cybersecurity Systems",
+                        "This program processes documents using AI.\n\n"
+                        "© 2025 Banthex and this Friend the stupid AI",
                         size=30
                     )
     
     # Initial-Logs
-    log_entries.append(f"System gestartet")
-    log_entries.append(f"Bereit für Dokumentenverarbeitung")
+    log_entries.append("System started")
+    log_entries.append("Ready for document processing")
     if not os.path.exists(script_path):
-        log_entries.append(f"WARNUNG: Skript {script_path} nicht gefunden!")
+        log_entries.append(f"WARNING: Script {script_path} not found!")
     update_log_display()
     
     # Erstelle viewport (16:9 Größe)
-    print("Erstelle Viewport...")
-    dpg.create_viewport(title="DokumentenKI", width=width, height=height)
+    print("Creating Viewport...")
+    dpg.create_viewport(title="DocumentAI", width=width, height=height)
     dpg.setup_dearpygui()
     dpg.show_viewport()
     
     # Hauptschleife
-    print("Starte Hauptschleife...")
+    print("Starting main loop...")
     last_update = 0
     last_log_check = 0
     while dpg.is_dearpygui_running():
@@ -1045,11 +1112,11 @@ try:
         if processing_active and process and process.poll() is not None:
             # Prozess ist beendet
             exit_code = process.poll()
-            log_entries.append(f"Prozess beendet mit Exit-Code: {exit_code}")
+            log_entries.append(f"Process ended with exit code: {exit_code}")
             
             # Versuche, Fehlerausgabe zu lesen, falls vorhanden
             if exit_code != 0:
-                log_entries.append("Prozess endete mit Fehler!")
+                log_entries.append("Process ended with error!")
                 # Füge weitere Diagnostik hinzu
                 try:
                     # Prüfe, ob Python-Fehler in der Log-Datei sind
@@ -1058,32 +1125,66 @@ try:
                             log_content = f.read()
                         
                         if "Traceback" in log_content:
-                            log_entries.append("Python-Fehler gefunden, siehe Logdatei")
+                            log_entries.append("Python error found, see log file")
                 except:
                     pass
             
             process = None
             processing_active = False
             dpg.set_value("process_button", "START")
-            dpg.set_value("status_text", "Status: Bereit")
+            dpg.set_value("status_text", "Status: Ready")
             update_log_display()
     
     # Aufräumen
-    print("Beende Programm...")
+    print("Ending program...")
     # Beende laufende Prozesse
     if process and process.poll() is None:
         try:
             process.terminate()
-            print("Prozess beendet")
+            print("Process ended")
         except:
-            print("Konnte Prozess nicht beenden")
+            print("Could not end process")
     
     dpg.destroy_context()
     
 except Exception as e:
-    log_error("Kritischer Fehler im Hauptprogramm", e)
-    print("\nBitte öffne die Datei error_log.txt für Details zum Fehler")
+    log_error("Critical error in main program", e)
+    print("\nPlease open the file error_log.txt for details on the error")
     # Halte Konsolenfenster offen für Fehlerbericht
-    input("\nDrücke Enter zum Beenden...")
+    input("\nPress Enter to end...")
 
-print("Programm beendet.")
+print("Program ended.")
+
+# Alternative Methode zum Aktualisieren der .env-Datei
+def update_env_file(key, value):
+    try:
+        # Lese die aktuelle .env-Datei
+        env_content = ""
+        if os.path.exists(".env"):
+            with open(".env", "r") as f:
+                env_content = f.read()
+        
+        # Prüfe, ob der Schlüssel bereits existiert
+        import re
+        if re.search(f"^{key}=.*$", env_content, re.MULTILINE):
+            # Ersetze den vorhandenen Wert
+            env_content = re.sub(f"^{key}=.*$", f"{key}={value}", env_content, flags=re.MULTILINE)
+        else:
+            # Füge einen neuen Schlüssel hinzu
+            env_content += f"\n{key}={value}\n"
+        
+        # Schreibe die aktualisierte Datei
+        with open(".env", "w") as f:
+            f.write(env_content)
+        
+        return True
+    except Exception as e:
+        print(f"Error while updating .env file: {e}")
+        return False
+
+# Stelle sicher, dass der Slider den korrekten Wert anzeigt
+try:
+    if dpg.does_item_exist("parallel_docs_slider"):
+        dpg.set_value("parallel_docs_slider", num_parallel_docs)
+except Exception as e:
+    print(f"Error setting slider value: {str(e)}")
