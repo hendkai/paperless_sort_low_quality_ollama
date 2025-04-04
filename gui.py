@@ -275,10 +275,11 @@ def extract_document_info(line):
     try:
         global total_documents, processed_documents
         
-        # Prüfe auf Gesamtanzahl der Dokumente
-        total_docs_match = re.search(r"Verarbeitung von (\d+) Dokumenten", line)
-        if total_docs_match:
-            total_documents = int(total_docs_match.group(1))
+        # Prüfe auf die initiale Anzahl der gefundenen Dokumente
+        found_docs_match = re.search(r"Starte Verarbeitung von (\d+) Dokumenten", line)
+        if found_docs_match:
+            total = int(found_docs_match.group(1))
+            total_documents = total
             processed_documents = 0
             # Aktualisiere Fortschrittsbalken
             if dpg.does_item_exist("total_progress_bar"):
@@ -286,8 +287,8 @@ def extract_document_info(line):
                 dpg.configure_item("total_progress_bar", overlay=f"0/{total_documents} (0%)")
             return None
 
-        # Prüfe auf abgeschlossene Verarbeitung
-        if "Processing completed" in line or "Verarbeitung abgeschlossen" in line:
+        # Prüfe auf abgeschlossene Verarbeitung eines Dokuments
+        if "==== Verarbeitung von Dokument ID:" in line and "abgeschlossen ====" in line:
             processed_documents += 1
             # Aktualisiere Gesamtfortschritt
             if total_documents > 0:
@@ -297,7 +298,7 @@ def extract_document_info(line):
                     dpg.configure_item("total_progress_bar", 
                                      overlay=f"{processed_documents}/{total_documents} ({int(progress*100)}%)")
 
-        # Bestehende Dokumenteninfo-Extraktion
+        # Bestehende Dokumenteninfo-Extraktion für einzelne Dokumente
         doc_id_match = re.search(r"Document ID[:\s]+(\d+)", line)
         if not doc_id_match:
             doc_id_match = re.search(r"Document[:\s]+(\d+)", line)
@@ -307,7 +308,7 @@ def extract_document_info(line):
         if doc_id_match:
             doc_id = int(doc_id_match.group(1))
             
-            # Search for progress (x/y format)
+            # Search for individual document progress (x/4 format)
             progress_match = re.search(r"verarbeitet \((\d+)/(\d+)\)", line)
             if not progress_match:
                 progress_match = re.search(r"processed \((\d+)/(\d+)\)", line)
@@ -316,9 +317,10 @@ def extract_document_info(line):
             if progress_match:
                 current = int(progress_match.group(1))
                 total = int(progress_match.group(2))
-                progress = current / total
+                if total == 4:  # Nur wenn es sich um den Dokumenten-spezifischen Fortschritt handelt
+                    progress = current / total
             
-            # Search for status
+            # Rest der Funktion bleibt unverändert...
             status = None
             if "Quality assessment" in line or "Qualitätsbewertung" in line:
                 status = "Quality Assessment"
@@ -333,13 +335,11 @@ def extract_document_info(line):
             elif "verarbeitet" in line or "processed" in line:
                 status = "Processing"
             
-            # Search for title
             title_match = re.search(r"Title: '([^']+)'|Titel: '([^']+)'", line)
             title = None
             if title_match:
                 title = title_match.group(1) or title_match.group(2)
             
-            # If we found any information, return it
             if any([progress is not None, status is not None, title is not None]):
                 return {
                     "doc_id": doc_id,
@@ -1198,3 +1198,4 @@ def update_timer_callback(sender, app_data):
     update_system_info()
 
 dpg.create_timer(callback=update_timer_callback, time=1.0)
+
