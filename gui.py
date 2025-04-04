@@ -7,6 +7,7 @@ from datetime import datetime
 import requests
 import threading
 import dearpygui.dearpygui as dpg
+import re  # Füge diese Zeile hinzu
 
 print("Starting DocumentAI GUI...")
 
@@ -114,13 +115,27 @@ except:
 # Dokumenten-Status-Tracking
 document_statuses = {}  # Speichert Status für jedes Dokument: ID -> {progress, status, title}
 
-# Hilfsfunktion für sicheres Hinzufügen von Text
+# Füge globale Variablen hinzu
+total_documents = 0
+processed_documents = 0
+
+# Verbesserte Hilfsfunktion für sicheres Hinzufügen von Text
 def safe_add_text(text, **kwargs):
     try:
-        return dpg.add_text(text, **kwargs)
+        # Stelle sicher, dass der Text ein String ist
+        text = str(text) if text is not None else ""
+        
+        # Füge den Text in einem try-block hinzu
+        with dpg.mutex():
+            return dpg.add_text(text, **kwargs)
     except Exception as e:
-        print(f"Fehler beim Hinzufügen von Text: {str(e)}")
-        return dpg.add_text(f"Fehler: {str(e)}")
+        if debug_mode:
+            print(f"Fehler beim Hinzufügen von Text: {str(e)}")
+        # Fallback: Versuche es ohne zusätzliche Parameter
+        try:
+            return dpg.add_text(text)
+        except:
+            return None
 
 # Verbesserte Fehlerbehandlung für GUI-Operationen
 def safe_configure_item(tag, **kwargs):
@@ -199,7 +214,6 @@ def filter_emojis(text):
     
     try:
         # Entferne ANSI-Escape-Sequenzen
-        import re
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         text = ansi_escape.sub('', text)
         
@@ -259,9 +273,31 @@ def filter_emojis(text):
 # Funktion zum Extrahieren von Dokumenteninformationen aus Logzeilen
 def extract_document_info(line):
     try:
-        import re
+        global total_documents, processed_documents
         
-        # Search for document ID
+        # Prüfe auf Gesamtanzahl der Dokumente
+        total_docs_match = re.search(r"Verarbeitung von (\d+) Dokumenten", line)
+        if total_docs_match:
+            total_documents = int(total_docs_match.group(1))
+            processed_documents = 0
+            # Aktualisiere Fortschrittsbalken
+            if dpg.does_item_exist("total_progress_bar"):
+                dpg.set_value("total_progress_bar", 0.0)
+                dpg.configure_item("total_progress_bar", overlay=f"0/{total_documents} (0%)")
+            return None
+
+        # Prüfe auf abgeschlossene Verarbeitung
+        if "Processing completed" in line or "Verarbeitung abgeschlossen" in line:
+            processed_documents += 1
+            # Aktualisiere Gesamtfortschritt
+            if total_documents > 0:
+                progress = processed_documents / total_documents
+                if dpg.does_item_exist("total_progress_bar"):
+                    dpg.set_value("total_progress_bar", progress)
+                    dpg.configure_item("total_progress_bar", 
+                                     overlay=f"{processed_documents}/{total_documents} ({int(progress*100)}%)")
+
+        # Bestehende Dokumenteninfo-Extraktion
         doc_id_match = re.search(r"Document ID[:\s]+(\d+)", line)
         if not doc_id_match:
             doc_id_match = re.search(r"Document[:\s]+(\d+)", line)
@@ -444,7 +480,7 @@ def read_output():
         print(f"Error while starting read thread: {str(e)}")
         return None
 
-# Funktion zum Aktualisieren des Logs
+# Verbesserte Funktion zum Aktualisieren des Log-Displays
 def update_log_display():
     try:
         if dpg.does_item_exist("log_area"):
@@ -452,7 +488,6 @@ def update_log_display():
             
             # Kombiniere direkte Prozessausgabe mit Logdatei
             if log_entries:
-                # Filtere Emojis aus allen Logeinträgen
                 filtered_entries = [entry for entry in log_entries[-30:]]
                 log_lines.extend(filtered_entries)
             
@@ -464,14 +499,15 @@ def update_log_display():
             log_text = "\n".join(log_lines)
             dpg.set_value("log_area", log_text)
             
-            # Scrolle zum Ende
-            try:
-                dpg.set_y_scroll("log_area", -1.0)
-            except Exception as e:
-                if debug_mode:
-                    print(f"Error while scrolling: {str(e)}")
+            # Entferne das automatische Scrolling, da es Probleme verursacht
+            # try:
+            #     dpg.set_y_scroll("log_area", -1.0)
+            # except Exception as e:
+            #     if debug_mode:
+            #         print(f"Error while scrolling: {str(e)}")
     except Exception as e:
-        print(f"Error while updating log display: {str(e)}")
+        if debug_mode:
+            print(f"Error while updating log display: {str(e)}")
 
 # Funktion zum Aktualisieren der Systeminfos
 def update_system_info():
@@ -539,9 +575,17 @@ def save_settings():
 
 # Funktion zum Starten/Stoppen der Verarbeitung
 def toggle_processing(sender, app_data):
-    global processing_active, log_entries, process
+    global processing_active, log_entries, process, total_documents, processed_documents
     
     try:
+        if not processing_active:
+            # Reset progress counters
+            total_documents = 0
+            processed_documents = 0
+            if dpg.does_item_exist("total_progress_bar"):
+                dpg.set_value("total_progress_bar", 0.0)
+                dpg.configure_item("total_progress_bar", overlay="0/0 (0%)")
+        
         processing_active = not processing_active
         
         if processing_active:
@@ -723,115 +767,91 @@ try:
     # Bestimme optimale 16:9 Fenstergröße
     width, height = get_display_size()
     
-    # Stelle sicher, dass es immer ein genaues 16:9 Verhältnis hat
-    height = int(width * 9/16)
+    # Reduziere die Größe auf 80% der Bildschirmbreite
+    width = int(width * 0.8)
+    height = int(width * 9/16)  # Behalte das 16:9 Verhältnis bei
     
     print(f"Using 16:9 window size: {width}x{height}")
+    
+    # Berechne die Spaltenbreiten proportional zur Gesamtbreite
+    left_col_width = int(width * 0.15)      # 15% der Breite (vorher 20%)
+    middle_col_width = int(width * 0.35)    # 35% der Breite (vorher 30%)
+    right_col_width = int(width * 0.50)     # 50% der Breite (unverändert)
+    content_height = height - 30            # Reduziere den Abstand zur Titelleiste
     
     # DearPyGui initialisieren
     print("Creating GUI...")
     dpg.create_context()
-    
-    # Berechne die Spaltenbreiten proportional zur Gesamtbreite
-    left_col_width = int(width * 0.20)      # 20% der Breite
-    middle_col_width = int(width * 0.30)    # 30% der Breite
-    right_col_width = int(width * 0.50)     # 50% der Breite
-    content_height = height - 50            # Berücksichtigt Titelleiste
     
     with dpg.window(label="DocumentAI", tag="main_window", width=width, height=height):
         with dpg.tab_bar():
             # Tab: Verarbeitung
             with dpg.tab(label="Processing"):
                 with dpg.group(horizontal=True):
-                    # Linke Seite - Status
+                    # Linke Seite - Status (kompakter)
                     with dpg.child_window(width=left_col_width, height=content_height):
-                        safe_add_text("SYSTEM STATUS", color=[255, 255, 0])
+                        safe_add_text("SYSTEM", color=[255, 255, 0])
                         dpg.add_separator()
-                        
-                        # Status
                         safe_add_text("Status: Ready", tag="status_text")
                         
-                        # System-Info
                         if system_monitoring:
-                            safe_add_text("SYSTEM INFO", color=[255, 255, 0])
                             dpg.add_separator()
                             safe_add_text("CPU: 0%", tag="cpu_text")
-                            safe_add_text("RAM: 0 GB / 0 GB", tag="ram_text")
-                            safe_add_text("Disk: 0 GB / 0 GB", tag="disk_text")
+                            safe_add_text("RAM: 0 GB", tag="ram_text")
+                            safe_add_text("Disk: 0 GB", tag="disk_text")
                         
-                        # Diagnose-Bereich
-                        safe_add_text("DIAGNOSTICS", color=[255, 255, 0])
                         dpg.add_separator()
-                        
-                        # Direkter Aufruf
-                        safe_add_text("Script Path:")
-                        dpg.add_input_text(
-                            default_value=script_path,
-                            tag="script_path_input",
-                            width=left_col_width-20
-                        )
-                        
-                        # Argumente
-                        dpg.add_text("Arguments:")
-                        dpg.add_input_text(
-                            default_value="--no-confirm",
-                            tag="script_args_input",
-                            width=left_col_width-20
-                        )
-                        
-                        # Debug-Modus Checkbox
+                        safe_add_text("SETTINGS", color=[255, 255, 0])
                         dpg.add_checkbox(
-                            label="Debug Mode",
+                            label="Debug",
                             default_value=debug_mode,
                             callback=lambda sender, data: globals().update(debug_mode=data)
                         )
-                    
-                    # Mittlerer Teil - Verarbeitung & Log
+
+                    # Mittlerer Teil - Verarbeitung & Log (kompakter)
                     with dpg.child_window(width=middle_col_width, height=content_height):
-                        # Überschrift
-                        safe_add_text("DOCUMENT PROCESSING", color=[255, 255, 0])
-                        dpg.add_separator()
-                        
-                        # Buttons in einer Gruppe
                         with dpg.group(horizontal=True):
-                            # Start Button
                             dpg.add_button(
                                 label="START", 
                                 callback=toggle_processing,
-                                width=middle_col_width//2-15, 
-                                height=60, 
+                                width=middle_col_width//2-10, 
+                                height=40,
                                 tag="process_button"
                             )
-                            
-                            # Stop Button - separat hinzugefügt
                             dpg.add_button(
                                 label="STOPP", 
                                 callback=stop_processing,
-                                width=middle_col_width//2-15, 
-                                height=60, 
+                                width=middle_col_width//2-10, 
+                                height=40,
                                 tag="stop_button",
-                                enabled=False  # Standardmäßig deaktiviert
+                                enabled=False
                             )
                         
-                        # Log-Bereich
-                        safe_add_text("LOG", color=[255, 255, 0])
+                        # Füge Gesamtfortschrittsbalken hinzu
+                        dpg.add_separator()
+                        safe_add_text("Gesamtfortschritt:", tag="total_progress_text")
+                        dpg.add_progress_bar(
+                            default_value=0.0,
+                            overlay="0/0 (0%)",
+                            width=middle_col_width-20,
+                            height=20,
+                            tag="total_progress_bar"
+                        )
+                        
                         dpg.add_separator()
                         dpg.add_input_text(
                             multiline=True, 
                             readonly=True, 
                             width=middle_col_width-20, 
-                            height=content_height-150, 
-                            tag="log_area"
+                            height=content_height-140,  # Reduziert um Platz für Fortschrittsbalken
+                            tag="log_area",
+                            tracked=True
                         )
-                    
-                    # Rechter Teil - Dokumentenpanels statt einer einzelnen ASCII-Art
+
+                    # Rechter Teil - Dokumentenpanels (kompakter)
                     with dpg.child_window(width=right_col_width, height=content_height):
-                        safe_add_text("DOCUMENT PROCESSING", color=[255, 255, 0])
-                        dpg.add_separator()
-                        
-                        # Slider für parallele Dokumente
                         dpg.add_slider_int(
-                            label="Parallel documents", 
+                            label="Parallel docs", 
                             min_value=1, 
                             max_value=4, 
                             default_value=num_parallel_docs,
@@ -842,45 +862,44 @@ try:
                         
                         dpg.add_separator()
                         
-                        # Erstelle Panels für jedes parallele Dokument
-                        panel_height = (content_height - 100) // 4  # Höhe pro Panel
-                        
-                        for i in range(1, 5):  # Maximal 4 parallele Dokumente
+                        # Kompaktere Panels
+                        panel_height = (content_height - 60) // 4
+                        for i in range(1, 5):
                             with dpg.collapsing_header(
-                                label=f"Document #{i}", 
+                                label=f"Doc #{i}", 
                                 default_open=True,
                                 tag=f"doc_panel_{i}",
                                 show=(i <= num_parallel_docs)
                             ):
-                                # Verstecktes Feld für Dokument-ID
                                 dpg.add_input_text(
                                     default_value="",
                                     tag=f"doc_id_{i}",
                                     show=False
                                 )
                                 
-                                # Titel des Dokuments
-                                safe_add_text("Title:", tag=f"doc_title_label_{i}")
-                                safe_add_text("No document", tag=f"doc_title_{i}", color=[200, 200, 200])
+                                with dpg.group(horizontal=True):
+                                    safe_add_text("Title:", tag=f"doc_title_label_{i}")
+                                    safe_add_text("No doc", tag=f"doc_title_{i}", color=[200, 200, 200])
                                 
-                                # Fortschrittsbalken
                                 dpg.add_progress_bar(
                                     default_value=0.0,
                                     overlay="0%",
                                     width=right_col_width-40,
-                                    height=20,
+                                    height=15,  # Reduzierte Höhe
                                     tag=f"doc_progress_{i}"
                                 )
                                 
-                                # Status
-                                safe_add_text("Status:", tag=f"doc_status_label_{i}")
-                                safe_add_text("Ready", tag=f"doc_status_{i}", color=[200, 200, 200])
+                                with dpg.group(horizontal=True):
+                                    safe_add_text("Status:", tag=f"doc_status_label_{i}")
+                                    safe_add_text("Ready", tag=f"doc_status_{i}", color=[200, 200, 200])
                                 
-                                # ASCII-Art für dieses Dokument
-                                dpg.add_text(ASCII_FACTORY_IDLE, tag=f"ascii_art_{i}", wrap=0)
-                                
-                                dpg.add_separator()
-            
+                                # Kompaktere ASCII-Art
+                                dpg.add_text(
+                                    ASCII_FACTORY_IDLE.replace("\n", "\n    "), 
+                                    tag=f"ascii_art_{i}", 
+                                    wrap=0
+                                )
+
             # Tab: Einstellungen
             with dpg.tab(label="Settings"):
                 with dpg.child_window(width=width-20, height=content_height, horizontal_scrollbar=True):
@@ -1151,7 +1170,6 @@ def update_env_file(key, value):
                 env_content = f.read()
         
         # Prüfe, ob der Schlüssel bereits existiert
-        import re
         if re.search(f"^{key}=.*$", env_content, re.MULTILINE):
             # Ersetze den vorhandenen Wert
             env_content = re.sub(f"^{key}=.*$", f"{key}={value}", env_content, flags=re.MULTILINE)
