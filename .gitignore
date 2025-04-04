@@ -1,10 +1,9 @@
-# Python-spezifische Dateien
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -16,14 +15,21 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 
-# Virtuelle Umgebungen
-venv/
-ENV/
-env/
+# Logs und temporäre Dateien
+*.log
+log.txt
+error_log.txt
+*.tmp
+preview.png
+
+# Umgebungsvariablen
+.env
+.env.*
 
 # IDE-spezifische Dateien
 .idea/
@@ -32,22 +38,19 @@ env/
 *.swo
 .DS_Store
 
+# Virtuelle Umgebungen
+venv/
+env/
+ENV/
+
+# Debugging
+.coverage
+htmlcov/
+
 # Projektspezifische Dateien
 config.ini
 secrets.json
 .env
-
-# Log-Dateien
-*.log
-error_log.txt
-debug_log.txt
-log/
-logs/
-
-# Temporäre Dateien
-temp/
-tmp/
-.cache/
 
 # Datenbanken
 *.db
@@ -57,9 +60,6 @@ tmp/
 # Ausgabedateien
 output/
 results/
-
-# Environment variables
-.env
 
 # Virtual Environment
 .venv/
