@@ -675,6 +675,141 @@ def display_preview_results(preview_results: list) -> None:
 
     print(f"{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}\n")
 
+def calculate_preview_statistics(preview_results: list) -> dict:
+    """
+    Calculate and display confidence statistics from preview results.
+
+    Args:
+        preview_results: List of PreviewResult objects or dictionaries containing preview data
+
+    Returns:
+        dict: Statistics including average_confidence, min_confidence, max_confidence,
+              consensus_rate, and quality_distribution
+    """
+    if not preview_results:
+        print(f"{Fore.YELLOW}⚠️  No preview results to analyze.{Style.RESET_ALL}")
+        return {}
+
+    # Initialize counters
+    confidence_scores = []
+    consensus_count = 0
+    high_quality_count = 0
+    low_quality_count = 0
+    no_consensus_count = 0
+    error_count = 0
+
+    # Extract data from results
+    for result in preview_results:
+        # Handle both dict and PreviewResult objects
+        if isinstance(result, dict):
+            confidence = result.get('confidence', 0.0)
+            consensus = result.get('consensus_reached', False)
+            quality = result.get('quality_assessment', '').lower()
+            error = result.get('error')
+        else:
+            confidence = result.confidence
+            consensus = result.consensus_reached
+            quality = result.quality_assessment.lower()
+            error = result.error
+
+        # Track errors separately
+        if error:
+            error_count += 1
+            continue
+
+        # Collect confidence scores (only for valid results)
+        if consensus:
+            confidence_scores.append(confidence)
+            consensus_count += 1
+
+            # Track quality distribution
+            if quality == 'high quality':
+                high_quality_count += 1
+            elif quality == 'low quality':
+                low_quality_count += 1
+        else:
+            no_consensus_count += 1
+
+    # Calculate statistics
+    total_valid = len(preview_results) - error_count
+    consensus_rate = consensus_count / total_valid if total_valid > 0 else 0.0
+
+    if confidence_scores:
+        avg_confidence = sum(confidence_scores) / len(confidence_scores)
+        min_confidence = min(confidence_scores)
+        max_confidence = max(confidence_scores)
+
+        # Calculate distribution of confidence levels
+        high_confidence = sum(1 for c in confidence_scores if c >= 0.8)
+        medium_confidence = sum(1 for c in confidence_scores if 0.5 <= c < 0.8)
+        low_confidence = sum(1 for c in confidence_scores if c < 0.5)
+    else:
+        avg_confidence = 0.0
+        min_confidence = 0.0
+        max_confidence = 0.0
+        high_confidence = 0
+        medium_confidence = 0
+        low_confidence = 0
+
+    # Display statistics
+    print(f"\n{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}📊 CONFIDENCE STATISTICS{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}\n")
+
+    # Confidence scores summary
+    print(f"{Fore.CYAN}📈 CONFIDENCE SCORES{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'-' * 40}{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}Average Confidence: {Fore.GREEN}{avg_confidence:.1%}{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}Min Confidence: {Fore.YELLOW}{min_confidence:.1%}{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}Max Confidence: {Fore.GREEN}{max_confidence:.1%}{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}Total Documents Analyzed: {total_valid}{Style.RESET_ALL}")
+
+    # Confidence distribution
+    print(f"\n{Fore.CYAN}📊 CONFIDENCE DISTRIBUTION{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'-' * 40}{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}High Confidence (≥80%): {high_confidence}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}Medium Confidence (50-79%): {medium_confidence}{Style.RESET_ALL}")
+    print(f"{Fore.RED}Low Confidence (<50%): {low_confidence}{Style.RESET_ALL}")
+
+    # Consensus statistics
+    print(f"\n{Fore.CYAN}🤝 CONSENSUS STATISTICS{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'-' * 40}{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}Consensus Rate: {Fore.GREEN}{consensus_rate:.1%}{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}✓ With Consensus: {consensus_count}{Style.RESET_ALL}")
+    print(f"{Fore.RED}✗ Without Consensus: {no_consensus_count}{Style.RESET_ALL}")
+
+    # Quality distribution
+    print(f"\n{Fore.CYAN}🏷️  QUALITY DISTRIBUTION{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'-' * 40}{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}High Quality: {high_quality_count}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}Low Quality: {low_quality_count}{Style.RESET_ALL}")
+
+    if error_count > 0:
+        print(f"\n{Fore.RED}⚠️  Errors: {error_count}{Style.RESET_ALL}")
+
+    print(f"{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}\n")
+
+    # Return statistics dictionary for potential further use
+    statistics = {
+        'average_confidence': avg_confidence,
+        'min_confidence': min_confidence,
+        'max_confidence': max_confidence,
+        'consensus_rate': consensus_rate,
+        'consensus_count': consensus_count,
+        'no_consensus_count': no_consensus_count,
+        'high_quality_count': high_quality_count,
+        'low_quality_count': low_quality_count,
+        'error_count': error_count,
+        'total_valid': total_valid,
+        'high_confidence_count': high_confidence,
+        'medium_confidence_count': medium_confidence,
+        'low_confidence_count': low_confidence
+    }
+
+    logger.info(f"Confidence statistics calculated: avg={avg_confidence:.2f}, min={min_confidence:.2f}, max={max_confidence:.2f}, consensus_rate={consensus_rate:.2f}")
+
+    return statistics
+
 def preview_interactive_menu(documents: list, api_url: str, api_token: str) -> bool:
     """
     Interactive menu for preview mode that allows users to adjust configuration and re-run preview.
