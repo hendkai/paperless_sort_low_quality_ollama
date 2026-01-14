@@ -3,4 +3,6 @@ tqdm
 python-dotenv
 tenacity
 colorama
-concurrent.futures
+anthropic>=0.18.0
+openai>=1.0.0
+zhipuai
