@@ -234,71 +234,124 @@ def process_documents(documents: list, api_url: str, api_token: str, ignore_alre
         if ignore_already_tagged and document.get('tags'):
             logger.info(f"Überspringe Dokument ID {document['id']}, da es bereits markiert ist.")
             continue
-        
+
+        # Check if document was already processed (resume capability)
+        if progress_tracker.is_processed(document['id']):
+            logger.info(f"Überspringe Dokument ID {document['id']}, da es bereits verarbeitet wurde (Progress-Check).")
+            continue
+
         # Fortschrittsanzeige aktualisieren
         processed_count += 1
         print(f"{Fore.CYAN}🤖 Verarbeite Dokument {processed_count}/{total_documents} (ID: {document['id']}){Style.RESET_ALL}")
-        
+
+        # Startzeit für die Verarbeitungsmessung
+        start_time = time.time()
+
         # Dokument vollständig verarbeiten, bevor mit dem nächsten fortgefahren wird
         try:
-            process_single_document(document, content, ensemble_service, api_url, api_token, csrf_token)
-            print(f"{Fore.GREEN}✅ Dokument {document['id']} verarbeitet ({processed_count}/{total_documents}){Style.RESET_ALL}")
+            result = process_single_document(document, content, ensemble_service, api_url, api_token, csrf_token)
+            processing_time = time.time() - start_time
+
+            # Save checkpoint after successful or failed processing
+            progress_tracker.save_checkpoint(
+                document_id=result['document_id'],
+                quality_response=result['quality_response'],
+                consensus_reached=result['consensus_reached'],
+                new_title=result.get('new_title'),
+                error=result.get('error'),
+                processing_time=processing_time
+            )
+
+            if result.get('error'):
+                print(f"{Fore.RED}⚠️ Dokument {document['id']} mit Fehlern verarbeitet ({processed_count}/{total_documents}){Style.RESET_ALL}")
+            else:
+                print(f"{Fore.GREEN}✅ Dokument {document['id']} verarbeitet ({processed_count}/{total_documents}){Style.RESET_ALL}")
         except Exception as e:
+            processing_time = time.time() - start_time
             logger.error(f"Fehler bei der Verarbeitung von Dokument {document['id']}: {e}")
             print(f"{Fore.RED}❌ Fehler bei Dokument {document['id']}: {str(e)[:100]}...{Style.RESET_ALL}")
-        
+
+            # Save checkpoint even when an unexpected error occurs
+            progress_tracker.save_checkpoint(
+                document_id=document['id'],
+                quality_response='',
+                consensus_reached=False,
+                new_title=None,
+                error=str(e),
+                processing_time=processing_time
+            )
+
         # Klare visuelle Trennung zwischen Dokumenten in der Konsole
         print(f"{Fore.YELLOW}{'=' * 80}{Style.RESET_ALL}\n")
     
     print(f"{Fore.GREEN}🤖 Verarbeitung aller Dokumente abgeschlossen!{Style.RESET_ALL}")
 
-def process_single_document(document: dict, content: str, ensemble_service: EnsembleOllamaService, api_url: str, api_token: str, csrf_token: str) -> None:
+def process_single_document(document: dict, content: str, ensemble_service: EnsembleOllamaService, api_url: str, api_token: str, csrf_token: str) -> dict:
     document_id = document['id']
     logger.info(f"==== Verarbeite Dokument ID: {document_id} ====")
     logger.info(f"Aktueller Titel: '{document.get('title', 'Kein Titel')}'")
     logger.info(f"Inhaltslänge: {len(content)} Zeichen")
-    
-    quality_response, consensus_reached = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document_id)
-    logger.info(f"Ollama Qualitätsbewertung für Dokument ID {document_id}: {quality_response}")
-    logger.info(f"Konsensus erreicht: {consensus_reached}")
 
-    if consensus_reached:
-        if quality_response.lower() == 'low quality':
-            try:
-                logger.info(f"Dokument {document_id} wird als 'Low Quality' markiert (Tag ID: {LOW_QUALITY_TAG_ID})")
-                tag_document(document_id, api_url, api_token, LOW_QUALITY_TAG_ID, csrf_token)
-                logger.info(f"Dokument ID {document_id} erfolgreich als 'Low Quality' markiert.")
-                print(f"Die KI-Modelle haben entschieden, die Datei als 'Low Quality' einzustufen.")
-            except requests.exceptions.HTTPError as e:
-                logger.error(f"Fehler beim Markieren des Dokuments ID {document_id} als 'Low Quality': {e}")
-        elif quality_response.lower() == 'high quality':
-            try:
-                logger.info(f"Dokument {document_id} wird als 'High Quality' markiert (Tag ID: {HIGH_QUALITY_TAG_ID})")
-                tag_document(document_id, api_url, api_token, HIGH_QUALITY_TAG_ID, csrf_token)
-                logger.info(f"Dokument ID {document_id} erfolgreich als 'High Quality' markiert.")
-                print(f"Die KI-Modelle haben entschieden, die Datei als 'High Quality' einzustufen.")
-                
-                # Dokument sofort umbenennen, wenn es als high quality eingestuft wurde
-                logger.info(f"Beginne Umbenennungsprozess für High-Quality-Dokument {document_id}...")
-                details = fetch_document_details(api_url, api_token, document_id)
-                old_title = details.get('title', '')
-                logger.info(f"Aktueller Titel vor Umbenennung: '{old_title}'")
-                
-                logger.info(f"Generiere neuen Titel basierend auf Inhalt (Länge: {len(details.get('content', ''))} Zeichen)")
-                new_title = generate_new_title(details.get('content', ''))
-                logger.info(f"Neuer generierter Titel: '{new_title}'")
-                
-                update_document_title(api_url, api_token, document_id, new_title, csrf_token, old_title)
-                logger.info(f"Umbenennung für Dokument {document_id} abgeschlossen!")
-                
-            except requests.exceptions.HTTPError as e:
-                logger.error(f"Fehler beim Markieren oder Umbenennen des Dokuments ID {document_id}: {e}")
-    else:
-        logger.warning(f"Die KI-Modelle konnten keinen Konsensus für Dokument ID {document_id} finden. Das Dokument wird übersprungen.")
-        print(f"Die KI-Modelle konnten keinen Konsensus für Dokument ID {document_id} finden. Das Dokument wird übersprungen.")
+    result = {
+        'document_id': document_id,
+        'quality_response': '',
+        'consensus_reached': False,
+        'new_title': None,
+        'error': None
+    }
 
-    logger.info(f"==== Verarbeitung von Dokument ID: {document_id} abgeschlossen ====\n")
-    time.sleep(1)  # Add delay between requests
+    try:
+        quality_response, consensus_reached = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document_id)
+        logger.info(f"Ollama Qualitätsbewertung für Dokument ID {document_id}: {quality_response}")
+        logger.info(f"Konsensus erreicht: {consensus_reached}")
+        result['quality_response'] = quality_response
+        result['consensus_reached'] = consensus_reached
+
+        if consensus_reached:
+            if quality_response.lower() == 'low quality':
+                try:
+                    logger.info(f"Dokument {document_id} wird als 'Low Quality' markiert (Tag ID: {LOW_QUALITY_TAG_ID})")
+                    tag_document(document_id, api_url, api_token, LOW_QUALITY_TAG_ID, csrf_token)
+                    logger.info(f"Dokument ID {document_id} erfolgreich als 'Low Quality' markiert.")
+                    print(f"Die KI-Modelle haben entschieden, die Datei als 'Low Quality' einzustufen.")
+                except requests.exceptions.HTTPError as e:
+                    logger.error(f"Fehler beim Markieren des Dokuments ID {document_id} als 'Low Quality': {e}")
+                    result['error'] = str(e)
+            elif quality_response.lower() == 'high quality':
+                try:
+                    logger.info(f"Dokument {document_id} wird als 'High Quality' markiert (Tag ID: {HIGH_QUALITY_TAG_ID})")
+                    tag_document(document_id, api_url, api_token, HIGH_QUALITY_TAG_ID, csrf_token)
+                    logger.info(f"Dokument ID {document_id} erfolgreich als 'High Quality' markiert.")
+                    print(f"Die KI-Modelle haben entschieden, die Datei als 'High Quality' einzustufen.")
+
+                    # Dokument sofort umbenennen, wenn es als high quality eingestuft wurde
+                    logger.info(f"Beginne Umbenennungsprozess für High-Quality-Dokument {document_id}...")
+                    details = fetch_document_details(api_url, api_token, document_id)
+                    old_title = details.get('title', '')
+                    logger.info(f"Aktueller Titel vor Umbenennung: '{old_title}'")
+
+                    logger.info(f"Generiere neuen Titel basierend auf Inhalt (Länge: {len(details.get('content', ''))} Zeichen)")
+                    new_title = generate_new_title(details.get('content', ''))
+                    logger.info(f"Neuer generierter Titel: '{new_title}'")
+                    result['new_title'] = new_title
+
+                    update_document_title(api_url, api_token, document_id, new_title, csrf_token, old_title)
+                    logger.info(f"Umbenennung für Dokument {document_id} abgeschlossen!")
+
+                except requests.exceptions.HTTPError as e:
+                    logger.error(f"Fehler beim Markieren oder Umbenennen des Dokuments ID {document_id}: {e}")
+                    result['error'] = str(e)
+        else:
+            logger.warning(f"Die KI-Modelle konnten keinen Konsensus für Dokument ID {document_id} finden. Das Dokument wird übersprungen.")
+            print(f"Die KI-Modelle konnten keinen Konsensus für Dokument ID {document_id} finden. Das Dokument wird übersprungen.")
+
+        logger.info(f"==== Verarbeitung von Dokument ID: {document_id} abgeschlossen ====\n")
+        time.sleep(1)  # Add delay between requests
+    except Exception as e:
+        logger.error(f"Unexpected error processing document {document_id}: {e}")
+        result['error'] = str(e)
+
+    return result
 
 def fetch_document_details(api_url: str, api_token: str, document_id: int) -> dict:
     headers = {'Authorization': f'Token {api_token}'}

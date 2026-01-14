@@ -3,7 +3,7 @@
   "spec": "003-progress-persistence-resume",
   "state": "building",
   "subtasks": {
-    "completed": 4,
+    "completed": 5,
     "total": 17,
     "in_progress": 1,
     "failed": 0
@@ -18,8 +18,8 @@
     "max": 1
   },
   "session": {
-    "number": 6,
+    "number": 7,
     "started_at": "2026-01-14T21:08:53.966724"
   },
-  "last_update": "2026-01-14T21:19:31.031521"
+  "last_update": "2026-01-14T21:22:03.176416"
 }
