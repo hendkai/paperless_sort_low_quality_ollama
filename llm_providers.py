@@ -7,9 +7,10 @@ for various LLM services (Ollama, GLM, Claude API, GPT API, etc.).
 
 from abc import ABC, abstractmethod
 import logging
-from typing import Optional
+from typing import Optional, Dict
 import requests
 import json
+import os
 
 
 logger = logging.getLogger(__name__)
@@ -706,3 +707,81 @@ class EnsembleLLMService:
             return majority_results[0], True
         else:
             return '', False
+
+
+def create_llm_provider(provider_type: str, config: Dict[str, str]) -> BaseLLMProvider:
+    """
+    Factory function to create LLM provider instances based on provider type.
+
+    This function reads the LLM_PROVIDER environment variable and instantiates
+    the appropriate provider class with the given configuration.
+
+    Args:
+        provider_type: The type of provider to create (e.g., 'ollama', 'glm', 'claude_api', 'claude_code', 'gpt')
+        config: Configuration dictionary containing provider-specific parameters
+            - For Ollama: url, endpoint, model
+            - For GLM: api_key, model, url (optional)
+            - For Claude API: api_key, model, url (optional)
+            - For Claude Code: api_key, model, url (optional)
+            - For GPT: api_key, model, url (optional)
+
+    Returns:
+        An instance of the appropriate BaseLLMProvider subclass
+
+    Raises:
+        ValueError: If an unknown provider type is specified
+
+    Examples:
+        >>> provider = create_llm_provider('gpt', {'api_key': 'sk-...', 'model': 'gpt-4'})
+        >>> provider = create_llm_provider('ollama', {'url': 'http://localhost:11434', 'endpoint': '/api/generate', 'model': 'llama2'})
+    """
+    provider_type_lower = provider_type.lower()
+
+    if provider_type_lower == 'ollama':
+        # Ollama requires url, endpoint, and model
+        if 'url' not in config or 'endpoint' not in config or 'model' not in config:
+            raise ValueError("Ollama provider requires 'url', 'endpoint', and 'model' in config")
+        return OllamaService(url=config['url'], endpoint=config['endpoint'], model=config['model'])
+
+    elif provider_type_lower == 'glm':
+        # GLM requires api_key and model
+        if 'api_key' not in config or 'model' not in config:
+            raise ValueError("GLM provider requires 'api_key' and 'model' in config")
+        return GLMProvider(
+            api_key=config['api_key'],
+            model=config['model'],
+            url=config.get('url')
+        )
+
+    elif provider_type_lower == 'claude_api':
+        # Claude API requires api_key and model
+        if 'api_key' not in config or 'model' not in config:
+            raise ValueError("Claude API provider requires 'api_key' and 'model' in config")
+        return ClaudeAPIProvider(
+            api_key=config['api_key'],
+            model=config['model'],
+            url=config.get('url')
+        )
+
+    elif provider_type_lower == 'claude_code':
+        # Claude Code requires api_key and model
+        if 'api_key' not in config or 'model' not in config:
+            raise ValueError("Claude Code provider requires 'api_key' and 'model' in config")
+        return ClaudeCodeProvider(
+            api_key=config['api_key'],
+            model=config['model'],
+            url=config.get('url')
+        )
+
+    elif provider_type_lower == 'gpt':
+        # GPT requires api_key and model
+        if 'api_key' not in config or 'model' not in config:
+            raise ValueError("GPT provider requires 'api_key' and 'model' in config")
+        return GPTProvider(
+            api_key=config['api_key'],
+            model=config['model'],
+            url=config.get('url')
+        )
+
+    else:
+        raise ValueError(f"Unknown provider type: '{provider_type}'. Valid options are: 'ollama', 'glm', 'claude_api', 'claude_code', 'gpt'")
