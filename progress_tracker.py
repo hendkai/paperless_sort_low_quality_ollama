@@ -76,3 +76,37 @@ class ProgressTracker:
         except Exception as e:
             logger.error(f"Error saving state to {self.state_file_path}: {e}")
             raise
+
+    def save_checkpoint(
+        self,
+        document_id: int,
+        quality_response: str,
+        consensus_reached: bool,
+        new_title: Optional[str],
+        error: Optional[str],
+        processing_time: float
+    ) -> None:
+        """
+        Save a processing checkpoint for a document.
+
+        Args:
+            document_id: The ID of the processed document
+            quality_response: The quality assessment result (e.g., 'high quality', 'low quality')
+            consensus_reached: Whether the ensemble models reached consensus
+            new_title: The new title generated for the document (if any)
+            error: Any error that occurred during processing (if any)
+            processing_time: Time taken to process the document in seconds
+        """
+        document_entry = {
+            'document_id': document_id,
+            'quality_response': quality_response,
+            'consensus_reached': consensus_reached,
+            'new_title': new_title,
+            'error': error,
+            'processing_time': processing_time,
+            'processed_at': datetime.now().isoformat()
+        }
+
+        self.state['documents'].append(document_entry)
+        self._save_state()
+        logger.info(f"Checkpoint saved for document ID {document_id}")
