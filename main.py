@@ -584,6 +584,17 @@ def main() -> None:
             else:
                 print(f"{Fore.GREEN}✅ Resuming from existing state...{Style.RESET_ALL}")
 
+    # Display progress summary on startup if state exists and has processed documents
+    summary = progress_tracker.get_progress_summary()
+    if summary['total_processed'] > 0:
+        print(f"{Fore.CYAN}📊 Resuming from previous session:{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}Documents already processed:{Style.RESET_ALL} {summary['total_processed']}")
+        print(f"  {Fore.GREEN}Successful:{Style.RESET_ALL} {summary['consensus_count']} | {Fore.RED}Errors:{Style.RESET_ALL} {summary['error_count']}")
+        if summary['last_updated']:
+            updated_time = datetime.fromisoformat(summary['last_updated']).strftime('%Y-%m-%d %H:%M:%S')
+            print(f"  {Fore.CYAN}Last processing:{Style.RESET_ALL} {updated_time}")
+        print(f"{Fore.YELLOW}ℹ️ Already-processed documents will be skipped{Style.RESET_ALL}\n")
+
     print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
     logger.info("Searching for documents with content...")
     documents = fetch_documents_with_content(API_URL, API_TOKEN, MAX_DOCUMENTS)
