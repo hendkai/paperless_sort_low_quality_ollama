@@ -6,3 +6,6 @@
 venv/
 ENV/
 paperless_venv/
+
+# Auto Claude data directory
+.auto-claude/
