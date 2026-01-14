@@ -11,7 +11,7 @@ from typing import Optional
 import sys
 import time
 from colorama import init, Fore, Style
-from llm_providers import OllamaService, EnsembleLLMService
+from llm_providers import OllamaService, EnsembleLLMService, create_llm_provider
 
 # Initialize Colorama
 init()
@@ -31,6 +31,19 @@ MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS"))
 NUM_LLM_MODELS = int(os.getenv("NUM_LLM_MODELS", 3))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 RENAME_DOCUMENTS = os.getenv("RENAME_DOCUMENTS", "no").lower() == 'yes'
+
+# LLM Provider Configuration (defaults to ollama for backward compatibility)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
+
+# Provider-specific configuration
+GLM_API_KEY = os.getenv("GLM_API_KEY")
+GLM_MODEL = os.getenv("GLM_MODEL")
+CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL")
+CLAUDE_CODE_API_KEY = os.getenv("CLAUDE_CODE_API_KEY")
+CLAUDE_CODE_MODEL = os.getenv("CLAUDE_CODE_MODEL")
+GPT_API_KEY = os.getenv("GPT_API_KEY")
+GPT_MODEL = os.getenv("GPT_MODEL")
 
 PROMPT_DEFINITION = """
 Please review the following document content and determine if it is of low quality or high quality.
@@ -118,13 +131,63 @@ def process_documents(documents: list, api_url: str, api_token: str, ignore_alre
     session = requests.Session()
     csrf_token = get_csrf_token(session, api_url, api_token)
     services = []
-    if NUM_LLM_MODELS >= 1:
-        services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME))
-    if NUM_LLM_MODELS >= 2:
-        services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, SECOND_MODEL_NAME))
-    if NUM_LLM_MODELS >= 3:
-        services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, THIRD_MODEL_NAME))
+
+    # Create LLM providers based on configuration
+    if LLM_PROVIDER == 'ollama':
+        # Ollama supports multiple models for ensemble voting
+        if NUM_LLM_MODELS >= 1 and MODEL_NAME:
+            services.append(create_llm_provider('ollama', {
+                'url': OLLAMA_URL,
+                'endpoint': OLLAMA_ENDPOINT,
+                'model': MODEL_NAME
+            }))
+        if NUM_LLM_MODELS >= 2 and SECOND_MODEL_NAME:
+            services.append(create_llm_provider('ollama', {
+                'url': OLLAMA_URL,
+                'endpoint': OLLAMA_ENDPOINT,
+                'model': SECOND_MODEL_NAME
+            }))
+        if NUM_LLM_MODELS >= 3 and THIRD_MODEL_NAME:
+            services.append(create_llm_provider('ollama', {
+                'url': OLLAMA_URL,
+                'endpoint': OLLAMA_ENDPOINT,
+                'model': THIRD_MODEL_NAME
+            }))
+    elif LLM_PROVIDER == 'glm' and GLM_API_KEY and GLM_MODEL:
+        services.append(create_llm_provider('glm', {
+            'api_key': GLM_API_KEY,
+            'model': GLM_MODEL
+        }))
+    elif LLM_PROVIDER == 'claude_api' and CLAUDE_API_KEY and CLAUDE_MODEL:
+        services.append(create_llm_provider('claude_api', {
+            'api_key': CLAUDE_API_KEY,
+            'model': CLAUDE_MODEL
+        }))
+    elif LLM_PROVIDER == 'claude_code' and CLAUDE_CODE_API_KEY and CLAUDE_CODE_MODEL:
+        services.append(create_llm_provider('claude_code', {
+            'api_key': CLAUDE_CODE_API_KEY,
+            'model': CLAUDE_CODE_MODEL
+        }))
+    elif LLM_PROVIDER == 'gpt' and GPT_API_KEY and GPT_MODEL:
+        services.append(create_llm_provider('gpt', {
+            'api_key': GPT_API_KEY,
+            'model': GPT_MODEL
+        }))
+    else:
+        logger.warning(f"LLM_PROVIDER '{LLM_PROVIDER}' is not configured or missing required credentials. Defaulting to Ollama if available.")
+        # Fallback to Ollama if configured
+        if OLLAMA_URL and OLLAMA_ENDPOINT and MODEL_NAME:
+            services.append(create_llm_provider('ollama', {
+                'url': OLLAMA_URL,
+                'endpoint': OLLAMA_ENDPOINT,
+                'model': MODEL_NAME
+            }))
+
+    if not services:
+        raise ValueError(f"No LLM provider could be initialized. Please check your {LLM_PROVIDER.upper()} configuration in .env file.")
+
     ensemble_service = EnsembleLLMService(services)
+    logger.info(f"Using {len(services)} LLM provider(s) with type: {LLM_PROVIDER}")
 
     # Sequentielle Verarbeitung statt mit ThreadPoolExecutor
     total_documents = len([doc for doc in documents if not (ignore_already_tagged and doc.get('tags'))])
@@ -245,9 +308,45 @@ def generate_new_title(content: str) -> str:
     logger.info("Sende Anfrage an LLM-Modell für Titelgenerierung...")
     
     try:
-        # Verwende das erste Modell für die Titelgenerierung
-        ollama_service = OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME)
-        title = ollama_service.generate_title(title_prompt, truncated_content)
+        # Create appropriate LLM provider for title generation
+        if LLM_PROVIDER == 'ollama' and OLLAMA_URL and OLLAMA_ENDPOINT and MODEL_NAME:
+            llm_service = create_llm_provider('ollama', {
+                'url': OLLAMA_URL,
+                'endpoint': OLLAMA_ENDPOINT,
+                'model': MODEL_NAME
+            })
+        elif LLM_PROVIDER == 'glm' and GLM_API_KEY and GLM_MODEL:
+            llm_service = create_llm_provider('glm', {
+                'api_key': GLM_API_KEY,
+                'model': GLM_MODEL
+            })
+        elif LLM_PROVIDER == 'claude_api' and CLAUDE_API_KEY and CLAUDE_MODEL:
+            llm_service = create_llm_provider('claude_api', {
+                'api_key': CLAUDE_API_KEY,
+                'model': CLAUDE_MODEL
+            })
+        elif LLM_PROVIDER == 'claude_code' and CLAUDE_CODE_API_KEY and CLAUDE_CODE_MODEL:
+            llm_service = create_llm_provider('claude_code', {
+                'api_key': CLAUDE_CODE_API_KEY,
+                'model': CLAUDE_CODE_MODEL
+            })
+        elif LLM_PROVIDER == 'gpt' and GPT_API_KEY and GPT_MODEL:
+            llm_service = create_llm_provider('gpt', {
+                'api_key': GPT_API_KEY,
+                'model': GPT_MODEL
+            })
+        else:
+            # Fallback to Ollama if configured
+            if OLLAMA_URL and OLLAMA_ENDPOINT and MODEL_NAME:
+                llm_service = create_llm_provider('ollama', {
+                    'url': OLLAMA_URL,
+                    'endpoint': OLLAMA_ENDPOINT,
+                    'model': MODEL_NAME
+                })
+            else:
+                raise ValueError(f"No LLM provider configured for title generation. Please check your {LLM_PROVIDER.upper()} settings.")
+
+        title = llm_service.generate_title(title_prompt, truncated_content)
         
         # Fallback, falls das Modell keinen Titel zurückgibt
         if not title or len(title.strip()) == 0:
