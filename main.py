@@ -11,6 +11,7 @@ from typing import Optional, List
 from dataclasses import dataclass
 import sys
 import time
+import argparse
 from colorama import init, Fore, Style
 
 # Initialize Colorama
@@ -975,6 +976,12 @@ def preview_interactive_menu(documents: list, api_url: str, api_token: str) -> b
             continue
 
 def main() -> None:
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Document Quality Analyzer')
+    parser.add_argument('--skip', action='store_true',
+                        help='Skip preview mode and process all documents directly')
+    args = parser.parse_args()
+
     print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
     logger.info("Searching for documents with content...")
     documents = fetch_documents_with_content(API_URL, API_TOKEN, MAX_DOCUMENTS)
@@ -987,8 +994,12 @@ def main() -> None:
         ignore_already_tagged = os.getenv("IGNORE_ALREADY_TAGGED", "yes").lower() == 'yes'
         proceed_to_bulk = False
 
+        # Check if --skip flag was provided to skip preview mode
+        if args.skip:
+            print(f"{Fore.YELLOW}⚡ --skip flag detected: bypassing preview mode{Style.RESET_ALL}")
+            proceed_to_bulk = True
         # Check if preview mode is enabled via environment variable
-        if PREVIEW_MODE:
+        elif PREVIEW_MODE:
             print(f"{Fore.CYAN}🔍 Preview mode enabled by configuration.{Style.RESET_ALL}")
             proceed_to_bulk = preview_interactive_menu(documents, API_URL, API_TOKEN)
         else:
