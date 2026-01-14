@@ -1,6 +1,28 @@
 # 📄 Document Quality Checker
 
-This script is designed to fetch and analyze documents from a Paperless server, tagging them as low or high quality based on a quality check using Ollama. It offers the flexibility to ignore already tagged documents during the analysis, making it efficient and user-friendly.
+This tool is designed to fetch and analyze documents from a Paperless server, tagging them as low or high quality based on a quality check using Ollama. It offers the flexibility to ignore already tagged documents during the analysis, making it efficient and user-friendly.
+
+## 🏗️ Architecture
+
+This project follows a modular architecture with clear separation of concerns:
+
+```
+src/
+├── config/         # Configuration management
+├── api/            # Paperless API client
+├── llm/            # Ollama LLM service
+├── quality/        # Quality analysis logic
+├── processing/     # Document processing workflows
+├── cli/            # Command-line interface
+└── container.py    # Dependency injection container
+```
+
+### Key Design Principles
+
+- **Modular Structure**: Each module has a single responsibility
+- **Dependency Injection**: Loose coupling through container.py
+- **Testability**: Clear interfaces enable easy mocking
+- **Maintainability**: Modules are < 200 lines each
 
 ## ✨ Features
 
@@ -36,7 +58,7 @@ Follow these steps to set up the Document Quality Checker:
 
 ## ⚙️ Configuration
 
-Before running the script, configure the necessary variables to match your environment. Edit the following settings in the script:
+Before running the tool, configure the necessary variables to match your environment. The configuration is managed through the `src/config/config.py` module. Set the following environment variables:
 
 - `API_URL`: The URL of your Paperless server.
 - `API_TOKEN`: Your Paperless API token for authentication.
@@ -108,10 +130,12 @@ To obtain the API token required for authentication:
 
 ## 🚀 Usage
 
-1. **Run the Script**:
+1. **Run the Tool**:
     ```sh
-    python main.py
+    python -m src
     ```
+
+    The entry point is in `src/__main__.py` which orchestrates the modular components through the dependency injection container.
 
 2. **Follow the Prompts**:
    - Choose whether to ignore documents that have already been tagged.
@@ -175,31 +199,29 @@ CONFIRM_PROCESS=yes
 To handle the 404 Client Error from Ollama, you can implement the following strategies:
 
 * **Check the URL and Endpoint**: Ensure that the `OLLAMA_URL` and `OLLAMA_ENDPOINT` in your `.env` file are correct. The error might be due to an incorrect URL or endpoint.
-* **Retry Mechanism**: Implement a retry mechanism to handle transient errors. The `tenacity` library is already used in the project, so you can wrap the request to Ollama with a retry decorator.
-* **Error Handling**: Add specific error handling for the 404 status code in the `evaluate_content` method of the `OllamaService` class in `main.py`. Log the error and return a meaningful message or take appropriate action.
+* **Retry Mechanism**: A retry mechanism is implemented in the `src/llm/service.py` module to handle transient errors using the `tenacity` library.
+* **Error Handling**: The `LLMService` class in `src/llm/service.py` includes specific error handling for various status codes. Errors are logged and appropriate actions are taken.
 
 ## Ensuring Correct `OLLAMA_URL` and `OLLAMA_ENDPOINT`
 
 To ensure the correct `OLLAMA_URL` and `OLLAMA_ENDPOINT`, you can follow these steps:
 
 * **Verify `.env` file**: Ensure that the `OLLAMA_URL` and `OLLAMA_ENDPOINT` values in your `.env` file are correct. The `.env.example` file provides a template for these values.
-* **Check environment variables**: Confirm that the environment variables are being loaded correctly in `main.py` using the `load_dotenv()` function.
+* **Check environment variables**: Confirm that the environment variables are being loaded correctly in `src/config/config.py` using the `load_dotenv()` function.
 * **Test the URL and endpoint**: Manually test the `OLLAMA_URL` and `OLLAMA_ENDPOINT` by sending a request using tools like `curl` or Postman to ensure they are reachable and returning the expected response.
 
 ## Using the `tenacity` Library for Retry Mechanisms
 
-To learn about using the `tenacity` library for retry mechanisms, you can follow these steps:
+The `tenacity` library is used in the modular architecture for retry mechanisms:
 
-* **Install the `tenacity` library**: Ensure that the `tenacity` library is included in your `requirements.txt` file. It is already listed in the provided `requirements.txt` file.
-* **Import the `tenacity` library**: Import the necessary components from the `tenacity` library in your script. For example, in `main.py`, you can see the import statements for `retry`, `stop_after_attempt`, and `wait_fixed`.
-* **Define retry logic**: Use the `@retry` decorator to define the retry logic for your functions. For example, in `main.py`, the `fetch_documents_with_content` and `tag_document` functions are decorated with `@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))`, which means they will retry up to 3 times with a 2-second wait between attempts.
-* **Handle exceptions**: Ensure that your functions handle exceptions properly. The `@retry` decorator will automatically retry the function if an exception is raised. You can customize the retry behavior by specifying different stop and wait conditions.
-
-By following these steps, you can effectively use the `tenacity` library to implement retry mechanisms in your code.
+* **Installation**: The `tenacity` library is included in `requirements.txt`.
+* **Implementation**: The `src/api/client.py` module uses `@retry` decorators for API calls to Paperless.
+* **Configuration**: Functions are decorated with `@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))`, retrying up to 3 times with a 2-second wait between attempts.
+* **Exception Handling**: Each module handles exceptions appropriately, with the `@retry` decorator automatically retrying failed requests.
 
 ## Environment Variables
 
-The following environment variables are used in the script and should be defined in the `.env` file:
+The following environment variables are used by the `src/config/config.py` module and should be defined in the `.env` file:
 
 - `API_URL`: The URL of your Paperless server.
 - `API_TOKEN`: Your Paperless API token for authentication.
@@ -216,6 +238,36 @@ The following environment variables are used in the script and should be defined
 - `CONFIRM_PROCESS`: Whether to require confirmation before processing.
 - `LOG_LEVEL`: The logging level for the script.
 - `RENAME_DOCUMENTS`: Whether to rename document titles based on their content.
+
+## 📚 Module Documentation
+
+### Core Modules
+
+- **`src/config/config.py`**: Manages application configuration using environment variables
+- **`src/api/client.py`**: Handles all Paperless API interactions with retry logic
+- **`src/llm/service.py`**: Provides LLM functionality through Ollama API
+- **`src/quality/analyzer.py`**: Analyzes document quality using LLM services
+- **`src/processing/processor.py`**: Orchestrates document processing workflows
+- **`src/cli/interface.py`**: Provides interactive command-line interface
+- **`src/container.py`**: Dependency injection container wiring all modules
+
+### Module Interactions
+
+1. **CLI Interface** (`src/cli/interface.py`) receives user input
+2. **Configuration** (`src/config/config.py`) loads environment settings
+3. **Container** (`src/container.py`) injects dependencies
+4. **API Client** (`src/api/client.py`) fetches documents from Paperless
+5. **LLM Service** (`src/llm/service.py`) queries Ollama for analysis
+6. **Quality Analyzer** (`src/quality/analyzer.py`) evaluates document quality
+7. **Processor** (`src/processing/processor.py`) coordinates tagging and updates
+
+## 🧪 Testing
+
+The modular architecture enables comprehensive testing:
+
+- Each module can be tested independently
+- Clear interfaces make mocking dependencies easy
+- Run tests with: `pytest tests/`
 
 ## 📜 License
 
