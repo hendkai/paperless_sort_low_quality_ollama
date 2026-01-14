@@ -536,11 +536,24 @@ def main() -> None:
         help='Display current processing progress and exit'
     )
 
+    parser.add_argument(
+        '--clear-state',
+        action='store_true',
+        help='Clear all processing state and restart from scratch'
+    )
+
     args = parser.parse_args()
 
     # Handle --show-progress flag
     if args.show_progress:
         show_progress()
+        return
+
+    # Handle --clear-state flag
+    if args.clear_state:
+        print(f"{Fore.YELLOW}⚠️ Clearing all processing state...{Style.RESET_ALL}")
+        progress_tracker.clear_state()
+        print(f"{Fore.GREEN}✅ State cleared successfully! All documents will be re-processed on next run.{Style.RESET_ALL}")
         return
 
     print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
