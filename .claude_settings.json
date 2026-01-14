@@ -1,0 +1,39 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read(./**)",
+      "Write(./**)",
+      "Edit(./**)",
+      "Glob(./**)",
+      "Grep(./**)",
+      "Read(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/worktrees/tasks/002-modular-architecture-refactoring/**)",
+      "Write(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/worktrees/tasks/002-modular-architecture-refactoring/**)",
+      "Edit(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/worktrees/tasks/002-modular-architecture-refactoring/**)",
+      "Glob(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/worktrees/tasks/002-modular-architecture-refactoring/**)",
+      "Grep(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/worktrees/tasks/002-modular-architecture-refactoring/**)",
+      "Read(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/worktrees/tasks/002-modular-architecture-refactoring/.auto-claude/specs/002-modular-architecture-refactoring/**)",
+      "Write(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/worktrees/tasks/002-modular-architecture-refactoring/.auto-claude/specs/002-modular-architecture-refactoring/**)",
+      "Edit(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/worktrees/tasks/002-modular-architecture-refactoring/.auto-claude/specs/002-modular-architecture-refactoring/**)",
+      "Read(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/**)",
+      "Write(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/**)",
+      "Edit(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/**)",
+      "Glob(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/**)",
+      "Grep(/home/hendrik/paperless_sort_low_quality_ollama/.auto-claude/**)",
+      "Bash(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "mcp__context7__resolve-library-id(*)",
+      "mcp__context7__get-library-docs(*)",
+      "mcp__graphiti-memory__search_nodes(*)",
+      "mcp__graphiti-memory__search_facts(*)",
+      "mcp__graphiti-memory__add_episode(*)",
+      "mcp__graphiti-memory__get_episodes(*)",
+      "mcp__graphiti-memory__get_entity_edge(*)"
+    ]
+  }
+}
