@@ -37,19 +37,32 @@ class ProgressTracker:
                 logger.info(f"Loading existing state from {self.state_file_path}")
                 with open(self.state_file_path, 'r') as f:
                     state = json.load(f)
-                    logger.info(f"Loaded state with {len(state.get('documents', []))} processed documents")
-                    return state
+
+                # Validate state structure
+                if not self._validate_state(state):
+                    logger.warning(f"Invalid state structure in {self.state_file_path}")
+                    logger.info("Creating new state to recover from invalid structure")
+                    new_state = self._create_new_state()
+                    self._save_state_to_file(new_state)
+                    return new_state
+
+                logger.info(f"Loaded state with {len(state.get('documents', []))} processed documents")
+                return state
             else:
                 logger.info(f"No existing state file found at {self.state_file_path}. Creating new state.")
                 return self._create_new_state()
         except json.JSONDecodeError as e:
             logger.error(f"Error decoding JSON from state file {self.state_file_path}: {e}")
             logger.info("Creating new state to recover from corrupted file")
-            return self._create_new_state()
+            new_state = self._create_new_state()
+            self._save_state_to_file(new_state)
+            return new_state
         except Exception as e:
             logger.error(f"Unexpected error loading state file {self.state_file_path}: {e}")
             logger.info("Creating new state to recover from error")
-            return self._create_new_state()
+            new_state = self._create_new_state()
+            self._save_state_to_file(new_state)
+            return new_state
 
     def _create_new_state(self) -> Dict[str, Any]:
         """
@@ -64,6 +77,26 @@ class ProgressTracker:
             'documents': []
         }
 
+    def _validate_state(self, state: Dict[str, Any]) -> bool:
+        """
+        Validate that the loaded state has the required structure.
+
+        Args:
+            state: The state dictionary to validate
+
+        Returns:
+            True if state is valid, False otherwise
+        """
+        required_keys = ['created_at', 'last_updated', 'documents']
+        for key in required_keys:
+            if key not in state:
+                logger.warning(f"Missing required key in state: {key}")
+                return False
+        if not isinstance(state['documents'], list):
+            logger.warning("State 'documents' field is not a list")
+            return False
+        return True
+
     def _save_state(self) -> None:
         """
         Save current state to file.
@@ -73,6 +106,22 @@ class ProgressTracker:
             with open(self.state_file_path, 'w') as f:
                 json.dump(self.state, f, indent=2)
             logger.debug(f"State saved to {self.state_file_path}")
+        except Exception as e:
+            logger.error(f"Error saving state to {self.state_file_path}: {e}")
+            raise
+
+    def _save_state_to_file(self, state: Dict[str, Any]) -> None:
+        """
+        Save a provided state dictionary to file.
+
+        Args:
+            state: The state dictionary to save
+        """
+        try:
+            state['last_updated'] = datetime.now().isoformat()
+            with open(self.state_file_path, 'w') as f:
+                json.dump(state, f, indent=2)
+            logger.info(f"State saved to {self.state_file_path}")
         except Exception as e:
             logger.error(f"Error saving state to {self.state_file_path}: {e}")
             raise
