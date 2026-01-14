@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 import sys
 import time
+import argparse
 from colorama import init, Fore, Style
 from progress_tracker import ProgressTracker
 
@@ -18,6 +19,18 @@ init()
 
 # Load environment variables
 load_dotenv()
+
+def get_env_int(key: str, default: int = 0) -> int:
+    """Safely get integer environment variable with default."""
+    value = os.getenv(key)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning(f"Invalid value for {key}: {value}, using default: {default}")
+        return default
+
 API_URL = os.getenv("API_URL")
 API_TOKEN = os.getenv("API_TOKEN")
 OLLAMA_URL = os.getenv("OLLAMA_URL")
@@ -25,10 +38,10 @@ OLLAMA_ENDPOINT = os.getenv("OLLAMA_ENDPOINT")
 MODEL_NAME = os.getenv("MODEL_NAME")
 SECOND_MODEL_NAME = os.getenv("SECOND_MODEL_NAME")
 THIRD_MODEL_NAME = os.getenv("THIRD_MODEL_NAME")
-LOW_QUALITY_TAG_ID = int(os.getenv("LOW_QUALITY_TAG_ID"))
-HIGH_QUALITY_TAG_ID = int(os.getenv("HIGH_QUALITY_TAG_ID"))
-MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS"))
-NUM_LLM_MODELS = int(os.getenv("NUM_LLM_MODELS", 3))
+LOW_QUALITY_TAG_ID = get_env_int("LOW_QUALITY_TAG_ID")
+HIGH_QUALITY_TAG_ID = get_env_int("HIGH_QUALITY_TAG_ID")
+MAX_DOCUMENTS = get_env_int("MAX_DOCUMENTS", 100)
+NUM_LLM_MODELS = get_env_int("NUM_LLM_MODELS", 3)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 RENAME_DOCUMENTS = os.getenv("RENAME_DOCUMENTS", "no").lower() == 'yes'
 PROGRESS_STATE_FILE = os.getenv("PROGRESS_STATE_FILE", "progress_state.json")
@@ -472,7 +485,64 @@ def update_document_title(api_url: str, api_token: str, document_id: int, new_ti
         print(f"❌ Fehler bei der Umbenennung von Dokument {document_id}: {e}")
         raise
 
+def show_progress() -> None:
+    """
+    Display the current progress state summary.
+
+    Shows statistics about processed documents including total count,
+    consensus count, error count, and processing time.
+    """
+    print(f"{Fore.CYAN}{'=' * 60}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}📊 Processing Progress Summary{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'=' * 60}{Style.RESET_ALL}")
+
+    summary = progress_tracker.get_progress_summary()
+
+    print(f"\n{Fore.GREEN}Total Documents Processed:{Style.RESET_ALL} {summary['total_processed']}")
+    print(f"{Fore.GREEN}Consensus Reached:{Style.RESET_ALL} {summary['consensus_count']}")
+    print(f"{Fore.RED}Errors:{Style.RESET_ALL} {summary['error_count']}")
+    print(f"{Fore.YELLOW}Total Processing Time:{Style.RESET_ALL} {summary['total_processing_time']:.2f} seconds")
+
+    if summary['created_at']:
+        created_time = datetime.fromisoformat(summary['created_at']).strftime('%Y-%m-%d %H:%M:%S')
+        print(f"\n{Fore.CYAN}State Created:{Style.RESET_ALL} {created_time}")
+
+    if summary['last_updated']:
+        updated_time = datetime.fromisoformat(summary['last_updated']).strftime('%Y-%m-%d %H:%M:%S')
+        print(f"{Fore.CYAN}Last Updated:{Style.RESET_ALL} {updated_time}")
+
+    # Show recent processed documents
+    if progress_tracker.state.get('documents'):
+        print(f"\n{Fore.CYAN}Recently Processed Documents:{Style.RESET_ALL}")
+        recent_docs = progress_tracker.state['documents'][-5:]  # Show last 5 documents
+        for doc in reversed(recent_docs):
+            status_icon = f"{Fore.GREEN}✅{Style.RESET_ALL}" if not doc.get('error') else f"{Fore.RED}❌{Style.RESET_ALL}"
+            timestamp = datetime.fromisoformat(doc['processed_at']).strftime('%H:%M:%S')
+            quality = doc.get('quality_response', 'N/A')
+            print(f"  {status_icon} ID {doc['document_id']} | {quality} | {timestamp}")
+
+    print(f"\n{Fore.CYAN}{'=' * 60}{Style.RESET_ALL}\n")
+
 def main() -> None:
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='Document Quality Analyzer - Process and classify documents using LLM ensemble',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+
+    parser.add_argument(
+        '--show-progress',
+        action='store_true',
+        help='Display current processing progress and exit'
+    )
+
+    args = parser.parse_args()
+
+    # Handle --show-progress flag
+    if args.show_progress:
+        show_progress()
+        return
+
     print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
     logger.info("Searching for documents with content...")
     documents = fetch_documents_with_content(API_URL, API_TOKEN, MAX_DOCUMENTS)
