@@ -675,6 +675,170 @@ def display_preview_results(preview_results: list) -> None:
 
     print(f"{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}\n")
 
+def preview_interactive_menu(documents: list, api_url: str, api_token: str) -> bool:
+    """
+    Interactive menu for preview mode that allows users to adjust configuration and re-run preview.
+
+    Args:
+        documents: List of document dictionaries from the API
+        api_url: Paperless-ngx API URL
+        api_token: API token for authentication
+
+    Returns:
+        bool: True if user wants to proceed with bulk processing, False otherwise
+    """
+    global PREVIEW_SAMPLE_COUNT, RENAME_DOCUMENTS
+
+    while True:
+        # Run preview with current configuration
+        print(f"\n{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🔍 RUNNING PREVIEW WITH CURRENT CONFIGURATION{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}\n")
+
+        preview_results = preview_sample_documents(documents, api_url, api_token)
+        display_preview_results(preview_results)
+
+        # Display current configuration
+        print(f"\n{Fore.CYAN}⚙️  CURRENT CONFIGURATION{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'-' * 40}{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}Sample Count: {PREVIEW_SAMPLE_COUNT}{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}Rename Documents: {'Enabled' if RENAME_DOCUMENTS else 'Disabled'}{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}Max Documents (for bulk): {MAX_DOCUMENTS}{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}Ignore Already Tagged: {os.getenv('IGNORE_ALREADY_TAGGED', 'yes').lower() == 'yes'}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'-' * 40}{Style.RESET_ALL}\n")
+
+        # Display menu options
+        print(f"{Fore.CYAN}📋 PREVIEW OPTIONS{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'-' * 40}{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}1.{Style.RESET_ALL} Proceed to bulk processing with current settings")
+        print(f"{Fore.YELLOW}2.{Style.RESET_ALL} Adjust sample count and re-run preview")
+        print(f"{Fore.YELLOW}3.{Style.RESET_ALL} Toggle rename documents and re-run preview")
+        print(f"{Fore.YELLOW}4.{Style.RESET_ALL} View detailed results for a specific document")
+        print(f"{Fore.RED}5.{Style.RESET_ALL} Exit without processing")
+        print(f"{Fore.CYAN}{'-' * 40}{Style.RESET_ALL}")
+
+        # Get user choice
+        try:
+            choice = input(f"\n{Fore.CYAN}Enter your choice (1-5): {Style.RESET_ALL}").strip()
+
+            if choice == '1':
+                # Proceed to bulk processing
+                confirm = input(f"{Fore.YELLOW}Are you sure you want to process all {MAX_DOCUMENTS} documents? (yes/no): {Style.RESET_ALL}").strip().lower()
+                if confirm in ['yes', 'y']:
+                    print(f"{Fore.GREEN}✅ Proceeding to bulk processing...{Style.RESET_ALL}\n")
+                    return True
+                else:
+                    print(f"{Fore.YELLOW}⚠️  Bulk processing cancelled. Returning to menu...{Style.RESET_ALL}\n")
+                    continue
+
+            elif choice == '2':
+                # Adjust sample count
+                try:
+                    new_sample_count = input(f"{Fore.CYAN}Enter new sample count (current: {PREVIEW_SAMPLE_COUNT}, max: {len(documents)}): {Style.RESET_ALL}").strip()
+                    new_count = int(new_sample_count)
+                    if 1 <= new_count <= len(documents):
+                        PREVIEW_SAMPLE_COUNT = new_count
+                        print(f"{Fore.GREEN}✅ Sample count updated to {PREVIEW_SAMPLE_COUNT}{Style.RESET_ALL}\n")
+                    else:
+                        print(f"{Fore.RED}❌ Invalid sample count. Must be between 1 and {len(documents)}{Style.RESET_ALL}\n")
+                        continue
+                except ValueError:
+                    print(f"{Fore.RED}❌ Invalid input. Please enter a number.{Style.RESET_ALL}\n")
+                    continue
+
+            elif choice == '3':
+                # Toggle rename documents
+                RENAME_DOCUMENTS = not RENAME_DOCUMENTS
+                status = "enabled" if RENAME_DOCUMENTS else "disabled"
+                print(f"{Fore.GREEN}✅ Rename documents {status}{Style.RESET_ALL}\n")
+
+            elif choice == '4':
+                # View detailed results for a specific document
+                try:
+                    doc_id = input(f"{Fore.CYAN}Enter document ID to view details: {Style.RESET_ALL}").strip()
+                    doc_id_int = int(doc_id)
+
+                    # Find the document in preview results
+                    found = False
+                    for result in preview_results:
+                        if isinstance(result, dict):
+                            result_doc_id = result.get('document_id')
+                        else:
+                            result_doc_id = result.document_id
+
+                        if result_doc_id == doc_id_int:
+                            found = True
+                            print(f"\n{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}")
+                            print(f"{Fore.CYAN}📄 DETAILED RESULTS FOR DOCUMENT {doc_id_int}{Style.RESET_ALL}")
+                            print(f"{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}\n")
+
+                            if isinstance(result, dict):
+                                print(f"{Fore.WHITE}Title:{Style.RESET_ALL} {result.get('title', 'Unknown')}")
+                                print(f"{Fore.WHITE}Content Length:{Style.RESET_ALL} {result.get('content_length', 0)} characters")
+                                print(f"{Fore.WHITE}Quality Assessment:{Style.RESET_ALL} {result.get('quality_assessment', 'UNKNOWN')}")
+                                print(f"{Fore.WHITE}Consensus Reached:{Style.RESET_ALL} {result.get('consensus_reached', False)}")
+                                print(f"{Fore.WHITE}Confidence:{Style.RESET_ALL} {result.get('confidence', 0.0):.0%}")
+                                print(f"{Fore.WHITE}Existing Tags:{Style.RESET_ALL} {result.get('existing_tags', [])}")
+
+                                individual_results = result.get('individual_results', [])
+                                if individual_results:
+                                    print(f"\n{Fore.CYAN}Individual Model Results:{Style.RESET_ALL}")
+                                    for idx, model_result in enumerate(individual_results, 1):
+                                        print(f"  {idx}. {Fore.CYAN}Model:{Style.RESET_ALL} {model_result.get('model', 'Unknown')}")
+                                        print(f"     {Fore.CYAN}Result:{Style.RESET_ALL} {model_result.get('result', 'Unknown')}")
+
+                                error = result.get('error')
+                                if error:
+                                    print(f"\n{Fore.RED}Error:{Style.RESET_ALL} {error}")
+                            else:
+                                print(f"{Fore.WHITE}Title:{Style.RESET_ALL} {result.title}")
+                                print(f"{Fore.WHITE}Content Length:{Style.RESET_ALL} {result.content_length} characters")
+                                print(f"{Fore.WHITE}Quality Assessment:{Style.RESET_ALL} {result.quality_assessment}")
+                                print(f"{Fore.WHITE}Consensus Reached:{Style.RESET_ALL} {result.consensus_reached}")
+                                print(f"{Fore.WHITE}Confidence:{Style.RESET_ALL} {result.confidence:.0%}")
+                                print(f"{Fore.WHITE}Existing Tags:{Style.RESET_ALL} {result.existing_tags}")
+
+                                if result.individual_results:
+                                    print(f"\n{Fore.CYAN}Individual Model Results:{Style.RESET_ALL}")
+                                    for idx, model_result in enumerate(result.individual_results, 1):
+                                        print(f"  {idx}. {Fore.CYAN}Model:{Style.RESET_ALL} {model_result.get('model', 'Unknown')}")
+                                        print(f"     {Fore.CYAN}Result:{Style.RESET_ALL} {model_result.get('result', 'Unknown')}")
+
+                                if result.error:
+                                    print(f"\n{Fore.RED}Error:{Style.RESET_ALL} {result.error}")
+
+                            print(f"{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}\n")
+                            break
+
+                    if not found:
+                        print(f"{Fore.RED}❌ Document ID {doc_id_int} not found in preview results.{Style.RESET_ALL}\n")
+
+                except ValueError:
+                    print(f"{Fore.RED}❌ Invalid document ID. Please enter a number.{Style.RESET_ALL}\n")
+                continue
+
+            elif choice == '5':
+                # Exit without processing
+                print(f"{Fore.RED}👋 Exiting without processing.{Style.RESET_ALL}\n")
+                return False
+
+            else:
+                print(f"{Fore.RED}❌ Invalid choice. Please enter a number between 1 and 5.{Style.RESET_ALL}\n")
+
+        except KeyboardInterrupt:
+            print(f"\n\n{Fore.YELLOW}⚠️  Interrupted by user.{Style.RESET_ALL}")
+            choice = input(f"{Fore.CYAN}Exit without processing? (yes/no): {Style.RESET_ALL}").strip().lower()
+            if choice in ['yes', 'y']:
+                print(f"{Fore.RED}👋 Exiting without processing.{Style.RESET_ALL}\n")
+                return False
+            else:
+                print(f"{Fore.CYAN}Continuing...{Style.RESET_ALL}\n")
+                continue
+        except Exception as e:
+            logger.error(f"Error in interactive menu: {e}")
+            print(f"{Fore.RED}❌ An error occurred: {e}{Style.RESET_ALL}\n")
+            continue
+
 def main() -> None:
     print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
     logger.info("Searching for documents with content...")
