@@ -160,6 +160,124 @@ class OllamaService(BaseLLMProvider):
             return ''
 
 
+class GLMProvider(BaseLLMProvider):
+    """
+    GLM (Zhipu AI / z.ai) LLM provider implementation.
+
+    This provider interfaces with Zhipu AI's GLM API to evaluate
+    document content and generate titles.
+    """
+
+    def __init__(self, api_key: str, model: str, url: Optional[str] = None) -> None:
+        """
+        Initialize the GLM provider.
+
+        Args:
+            api_key: The API key for Zhipu AI
+            model: The model name to use (e.g., glm-4, glm-3-turbo)
+            url: Optional custom URL endpoint (defaults to https://open.bigmodel.cn/api/paas/v4/chat/completions)
+        """
+        super().__init__(model=model, url=url or "https://open.bigmodel.cn/api/paas/v4/chat/completions")
+        self.api_key = api_key
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+    def evaluate_content(self, content: str, prompt: str, document_id: int) -> str:
+        """
+        Evaluate document content using GLM and return quality assessment.
+
+        Args:
+            content: The document content to evaluate
+            prompt: The prompt to use for evaluation
+            document_id: The document ID for logging/tracking
+
+        Returns:
+            Quality assessment string ("low quality", "high quality", or empty string on error)
+        """
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "user", "content": f"{prompt}{content}"}
+            ],
+            "temperature": 0.3,
+            "max_tokens": 100
+        }
+
+        try:
+            response = requests.post(self.url, json=payload, headers=self.headers, timeout=60)
+            response.raise_for_status()
+            response_data = response.json()
+
+            # Extract content from GLM response
+            if 'choices' in response_data and len(response_data['choices']) > 0:
+                full_response = response_data['choices'][0]['message']['content'].strip()
+
+                # Check for quality assessment in response
+                if "high quality" in full_response.lower():
+                    return "high quality"
+                elif "low quality" in full_response.lower():
+                    return "low quality"
+                else:
+                    return ''
+            else:
+                self.logger.error(f"Unexpected response format from GLM for document ID {document_id}")
+                return ''
+
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error sending request to GLM for document ID {document_id}: {e}")
+            return ''
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            self.logger.error(f"Error parsing GLM response for document ID {document_id}: {e}")
+            return ''
+
+    def generate_title(self, prompt: str, content: str) -> str:
+        """
+        Generate a title for the document content using GLM.
+
+        Args:
+            prompt: The prompt to use for title generation
+            content: The document content to base the title on
+
+        Returns:
+            Generated title string
+        """
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 50
+        }
+
+        try:
+            response = requests.post(self.url, json=payload, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            response_data = response.json()
+
+            # Extract title from GLM response
+            if 'choices' in response_data and len(response_data['choices']) > 0:
+                title = response_data['choices'][0]['message']['content'].strip()
+
+                # Clean the response from quotes or other formatting
+                title = title.replace('"', '').replace("'", '').replace('**', '')
+
+                self.logger.info(f"GLM hat folgenden Titel generiert: '{title}'")
+                return title
+            else:
+                self.logger.error("Unexpected response format from GLM for title generation")
+                return ''
+
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error sending request to GLM for title generation: {e}")
+            return ''
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            self.logger.error(f"Error parsing GLM response for title generation: {e}")
+            return ''
+
+
 class EnsembleLLMService:
     """
     Ensemble LLM service that combines multiple LLM providers for consensus-based evaluation.
