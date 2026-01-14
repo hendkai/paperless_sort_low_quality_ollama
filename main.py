@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 import logging
 from tenacity import retry, stop_after_attempt, wait_fixed
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
+from typing import Optional, List
+from dataclasses import dataclass
 import sys
 import time
 from colorama import init, Fore, Style
@@ -48,6 +49,19 @@ Content:
 # Configure logging
 logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+@dataclass
+class PreviewResult:
+    """Dataclass to store preview evaluation results for a document."""
+    document_id: int
+    title: str
+    content_length: int
+    quality_assessment: str
+    consensus_reached: bool
+    confidence: float
+    individual_results: List[dict]
+    existing_tags: List[int]
+    error: Optional[str] = None
 
 def show_robot_animation():
     frames = [
