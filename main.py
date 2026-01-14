@@ -30,6 +30,8 @@ MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS"))
 NUM_LLM_MODELS = int(os.getenv("NUM_LLM_MODELS", 3))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 RENAME_DOCUMENTS = os.getenv("RENAME_DOCUMENTS", "no").lower() == 'yes'
+PREVIEW_MODE = os.getenv("PREVIEW_MODE", "no").lower() == 'yes'
+PREVIEW_SAMPLE_COUNT = int(os.getenv("PREVIEW_SAMPLE_COUNT", 5))
 
 PROMPT_DEFINITION = """
 Please review the following document content and determine if it is of low quality or high quality.
