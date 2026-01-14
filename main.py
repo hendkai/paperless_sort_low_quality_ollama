@@ -542,6 +542,13 @@ def main() -> None:
         help='Clear all processing state and restart from scratch'
     )
 
+    parser.add_argument(
+        '--resume-mode',
+        choices=['auto', 'prompt', 'fresh'],
+        default='auto',
+        help='Resume mode: auto (resume if state exists), prompt (ask user), fresh (start fresh)'
+    )
+
     args = parser.parse_args()
 
     # Handle --show-progress flag
@@ -555,6 +562,27 @@ def main() -> None:
         progress_tracker.clear_state()
         print(f"{Fore.GREEN}✅ State cleared successfully! All documents will be re-processed on next run.{Style.RESET_ALL}")
         return
+
+    # Handle --resume-mode option
+    if args.resume_mode == 'fresh':
+        print(f"{Fore.YELLOW}⚠️ Fresh start mode: Clearing all processing state...{Style.RESET_ALL}")
+        progress_tracker.clear_state()
+        print(f"{Fore.GREEN}✅ State cleared! Starting fresh...{Style.RESET_ALL}")
+    elif args.resume_mode == 'prompt':
+        # Check if there's existing state
+        summary = progress_tracker.get_progress_summary()
+        if summary['total_processed'] > 0:
+            print(f"{Fore.CYAN}📊 Existing processing state found:{Style.RESET_ALL}")
+            print(f"  - Documents processed: {summary['total_processed']}")
+            print(f"  - Last updated: {summary['last_updated']}")
+            print(f"{Fore.YELLOW}Do you want to resume from this state? (y/n):{Style.RESET_ALL} ", end='')
+            response = input().strip().lower()
+            if response not in ['y', 'yes']:
+                print(f"{Fore.YELLOW}⚠️ Clearing state and starting fresh...{Style.RESET_ALL}")
+                progress_tracker.clear_state()
+                print(f"{Fore.GREEN}✅ Starting fresh...{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.GREEN}✅ Resuming from existing state...{Style.RESET_ALL}")
 
     print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
     logger.info("Searching for documents with content...")
