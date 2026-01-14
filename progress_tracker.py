@@ -142,3 +142,40 @@ class ProgressTracker:
                 return doc
         logger.debug(f"No checkpoint found for document ID {document_id}")
         return None
+
+    def get_progress_summary(self) -> Dict[str, Any]:
+        """
+        Get a summary of processing progress.
+
+        Returns:
+            Dictionary containing progress statistics including total_processed,
+            consensus_count, error_count, and total_processing_time
+        """
+        documents = self.state['documents']
+        total_processed = len(documents)
+        consensus_count = sum(1 for doc in documents if doc.get('consensus_reached', False))
+        error_count = sum(1 for doc in documents if doc.get('error') is not None)
+        total_processing_time = sum(doc.get('processing_time', 0.0) for doc in documents)
+
+        summary = {
+            'total_processed': total_processed,
+            'consensus_count': consensus_count,
+            'error_count': error_count,
+            'total_processing_time': total_processing_time,
+            'created_at': self.state.get('created_at'),
+            'last_updated': self.state.get('last_updated')
+        }
+
+        logger.debug(f"Progress summary: {total_processed} documents processed")
+        return summary
+
+    def clear_state(self) -> None:
+        """
+        Clear all processed documents from the state.
+
+        Resets the documents list while preserving metadata.
+        """
+        self.state['documents'] = []
+        self.state['last_updated'] = datetime.now().isoformat()
+        self._save_state()
+        logger.info("State cleared - all processed documents have been removed")
