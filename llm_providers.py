@@ -158,3 +158,76 @@ class OllamaService(BaseLLMProvider):
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error sending request to Ollama for title generation: {e}")
             return ''
+
+
+class EnsembleLLMService:
+    """
+    Ensemble LLM service that combines multiple LLM providers for consensus-based evaluation.
+
+    This service takes multiple LLM provider instances and evaluates content using all of them,
+    then applies consensus logic to determine the final result.
+    """
+
+    def __init__(self, services: list) -> None:
+        """
+        Initialize the ensemble service with a list of LLM provider instances.
+
+        Args:
+            services: List of BaseLLMProvider instances to use for ensemble evaluation
+        """
+        self.services = services
+        self.logger = logger
+
+    def evaluate_content(self, content: str, prompt: str, document_id: int) -> tuple:
+        """
+        Evaluate content using all providers and return consensus result.
+
+        Args:
+            content: The document content to evaluate
+            prompt: The prompt to use for evaluation
+            document_id: The document ID for logging/tracking
+
+        Returns:
+            Tuple of (consensus_result, consensus_reached)
+            - consensus_result: The agreed-upon quality assessment string
+            - consensus_reached: Boolean indicating if consensus was achieved
+        """
+        results = []
+        for service in self.services:
+            result = service.evaluate_content(content, prompt, document_id)
+            self.logger.info(f"Model {service.model} result for document ID {document_id}: {result}")
+            if result:
+                results.append(result)
+
+        consensus_result, consensus_reached = self.consensus_logic(results)
+        return consensus_result, consensus_reached
+
+    def consensus_logic(self, results: list) -> tuple:
+        """
+        Apply consensus logic to determine the final result from multiple provider outputs.
+
+        Args:
+            results: List of results from multiple LLM providers
+
+        Returns:
+            Tuple of (consensus_result, consensus_reached)
+            - consensus_result: The agreed-upon result (empty string if no consensus)
+            - consensus_reached: Boolean indicating if consensus was achieved
+        """
+        if not results:
+            return '', False
+
+        result_count = {}
+        for result in results:
+            if result in result_count:
+                result_count[result] += 1
+            else:
+                result_count[result] = 1
+
+        max_count = max(result_count.values())
+        majority_results = [result for result, count in result_count.items() if count == max_count]
+
+        if len(majority_results) == 1:
+            return majority_results[0], True
+        else:
+            return '', False

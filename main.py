@@ -11,7 +11,7 @@ from typing import Optional
 import sys
 import time
 from colorama import init, Fore, Style
-from llm_providers import OllamaService
+from llm_providers import OllamaService, EnsembleLLMService
 
 # Initialize Colorama
 init()
@@ -59,40 +59,6 @@ def show_robot_animation():
         sys.stdout.write('\r' + frame)
         sys.stdout.flush()
         time.sleep(0.2)
-
-class EnsembleOllamaService:
-    def __init__(self, services: list) -> None:
-        self.services = services
-
-    def evaluate_content(self, content: str, prompt: str, document_id: int) -> str:
-        results = []
-        for service in self.services:
-            result = service.evaluate_content(content, prompt, document_id)
-            logger.info(f"Model {service.model} result for document ID {document_id}: {result}")
-            if result:
-                results.append(result)
-        
-        consensus_result, consensus_reached = self.consensus_logic(results)
-        return consensus_result, consensus_reached
-
-    def consensus_logic(self, results: list) -> tuple:
-        if not results:
-            return '', False
-        
-        result_count = {}
-        for result in results:
-            if result in result_count:
-                result_count[result] += 1
-            else:
-                result_count[result] = 1
-        
-        max_count = max(result_count.values())
-        majority_results = [result for result, count in result_count.items() if count == max_count]
-        
-        if len(majority_results) == 1:
-            return majority_results[0], True
-        else:
-            return '', False
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 def fetch_documents_with_content(api_url: str, api_token: str, max_documents: int) -> list:
@@ -158,7 +124,7 @@ def process_documents(documents: list, api_url: str, api_token: str, ignore_alre
         services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, SECOND_MODEL_NAME))
     if NUM_LLM_MODELS >= 3:
         services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, THIRD_MODEL_NAME))
-    ensemble_service = EnsembleOllamaService(services)
+    ensemble_service = EnsembleLLMService(services)
 
     # Sequentielle Verarbeitung statt mit ThreadPoolExecutor
     total_documents = len([doc for doc in documents if not (ignore_already_tagged and doc.get('tags'))])
@@ -189,7 +155,7 @@ def process_documents(documents: list, api_url: str, api_token: str, ignore_alre
     
     print(f"{Fore.GREEN}🤖 Verarbeitung aller Dokumente abgeschlossen!{Style.RESET_ALL}")
 
-def process_single_document(document: dict, content: str, ensemble_service: EnsembleOllamaService, api_url: str, api_token: str, csrf_token: str) -> None:
+def process_single_document(document: dict, content: str, ensemble_service: EnsembleLLMService, api_url: str, api_token: str, csrf_token: str) -> None:
     document_id = document['id']
     logger.info(f"==== Verarbeite Dokument ID: {document_id} ====")
     logger.info(f"Aktueller Titel: '{document.get('title', 'Kein Titel')}'")
