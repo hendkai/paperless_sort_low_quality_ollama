@@ -570,6 +570,111 @@ def preview_sample_documents(documents: list, api_url: str, api_token: str) -> l
     print(f"{Fore.GREEN}🤖 Preview completed!{Style.RESET_ALL}")
     return preview_results
 
+def display_preview_results(preview_results: list) -> None:
+    """
+    Display preview results in a formatted table.
+
+    Args:
+        preview_results: List of PreviewResult objects or dictionaries containing preview data
+    """
+    if not preview_results:
+        print(f"{Fore.YELLOW}⚠️  No preview results to display.{Style.RESET_ALL}")
+        return
+
+    print(f"\n{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}📊 PREVIEW RESULTS{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}\n")
+
+    # Table header
+    header = f"{Fore.WHITE}{'ID':<6} {'Title':<40} {'Quality':<15} {'Confidence':<12} {'Consensus':<10}{'Action':<20}{Style.RESET_ALL}"
+    print(header)
+    print(f"{Fore.CYAN}{'-' * 100}{Style.RESET_ALL}")
+
+    # Count statistics
+    high_quality_count = 0
+    low_quality_count = 0
+    no_consensus_count = 0
+    error_count = 0
+
+    # Display each result
+    for result in preview_results:
+        # Handle both dict and PreviewResult objects
+        if isinstance(result, dict):
+            doc_id = result.get('document_id', 'N/A')
+            title = result.get('title', 'Unknown')
+            quality = result.get('quality_assessment', 'UNKNOWN')
+            consensus = result.get('consensus_reached', False)
+            confidence = result.get('confidence', 0.0)
+            error = result.get('error')
+        else:
+            doc_id = result.document_id
+            title = result.title
+            quality = result.quality_assessment
+            consensus = result.consensus_reached
+            confidence = result.confidence
+            error = result.error
+
+        # Truncate title if too long
+        if len(title) > 37:
+            title = title[:37] + '...'
+
+        # Determine row colors and action based on quality assessment
+        if error:
+            quality_display = f"{Fore.RED}ERROR{Style.RESET_ALL}"
+            consensus_display = f"{Fore.RED}N/A{Style.RESET_ALL}"
+            confidence_display = f"{Fore.RED}N/A{Style.RESET_ALL}"
+            action_display = f"{Fore.RED}Skip (Error){Style.RESET_ALL}"
+            error_count += 1
+        elif quality == 'high quality':
+            quality_display = f"{Fore.GREEN}HIGH QUALITY{Style.RESET_ALL}"
+            consensus_display = f"{Fore.GREEN}Yes{Style.RESET_ALL}" if consensus else f"{Fore.YELLOW}No{Style.RESET_ALL}"
+            confidence_display = f"{Fore.GREEN}{confidence:.0%}{Style.RESET_ALL}"
+            action_display = f"{Fore.GREEN}Tag High Quality{Style.RESET_ALL}"
+            if RENAME_DOCUMENTS:
+                action_display += f" {Fore.CYAN}+ Rename{Style.RESET_ALL}"
+            high_quality_count += 1
+        elif quality == 'low quality':
+            quality_display = f"{Fore.YELLOW}LOW QUALITY{Style.RESET_ALL}"
+            consensus_display = f"{Fore.GREEN}Yes{Style.RESET_ALL}" if consensus else f"{Fore.YELLOW}No{Style.RESET_ALL}"
+            confidence_display = f"{Fore.GREEN}{confidence:.0%}{Style.RESET_ALL}"
+            action_display = f"{Fore.YELLOW}Tag Low Quality{Style.RESET_ALL}"
+            low_quality_count += 1
+        else:
+            quality_display = f"{Fore.RED}UNKNOWN{Style.RESET_ALL}"
+            consensus_display = f"{Fore.RED}No{Style.RESET_ALL}"
+            confidence_display = f"{Fore.RED}N/A{Style.RESET_ALL}"
+            action_display = f"{Fore.YELLOW}Skip (No Consensus){Style.RESET_ALL}"
+            no_consensus_count += 1
+
+        # Print row
+        row = f"{doc_id:<6} {title:<40} {quality_display:<28} {confidence_display:<22} {consensus_display:<18} {action_display:<20}"
+        print(row)
+
+    # Print separator
+    print(f"{Fore.CYAN}{'-' * 100}{Style.RESET_ALL}\n")
+
+    # Print summary statistics
+    print(f"{Fore.CYAN}📈 SUMMARY STATISTICS{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'-' * 40}{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}Total Documents Previewed: {len(preview_results)}{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}✓ High Quality: {high_quality_count}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}✓ Low Quality: {low_quality_count}{Style.RESET_ALL}")
+    print(f"{Fore.RED}✗ No Consensus: {no_consensus_count}{Style.RESET_ALL}")
+    if error_count > 0:
+        print(f"{Fore.RED}✗ Errors: {error_count}{Style.RESET_ALL}")
+
+    # Show tags that will be applied
+    print(f"\n{Fore.CYAN}🏷️  TAGS THAT WILL BE APPLIED{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'-' * 40}{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}High Quality Tag ID: {HIGH_QUALITY_TAG_ID}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}Low Quality Tag ID: {LOW_QUALITY_TAG_ID}{Style.RESET_ALL}")
+    if RENAME_DOCUMENTS:
+        print(f"{Fore.CYAN}High Quality documents will also be renamed.{Style.RESET_ALL}")
+    else:
+        print(f"{Fore.CYAN}Rename documents: Disabled{Style.RESET_ALL}")
+
+    print(f"{Fore.CYAN}{'=' * 100}{Style.RESET_ALL}\n")
+
 def main() -> None:
     print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
     logger.info("Searching for documents with content...")
