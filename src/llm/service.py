@@ -56,7 +56,8 @@ class OllamaService:
             else:
                 return ''
         except requests.exceptions.RequestException as e:
-            if response.status_code == 404:
+            # Check if exception has a response attribute (for HTTP errors)
+            if hasattr(e, 'response') and e.response is not None and e.response.status_code == 404:
                 logger.error(f"404 Client Error: Not Found for document ID {document_id}: {e}")
                 return '404 Client Error: Not Found'
             else:
