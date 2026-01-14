@@ -1,0 +1,20 @@
+2026-01-14 21:47:59,754 - INFO - No existing state file found at test_clear_state.json. Creating new state.
+2026-01-14 21:47:59,754 - INFO - ==== Verarbeite Dokument ID: 301 ====
+2026-01-14 21:47:59,804 - INFO - Checkpoint saved for document ID 301
+2026-01-14 21:47:59,805 - INFO - ==== Verarbeitung von Dokument ID: 301 abgeschlossen ====
+2026-01-14 21:47:59,805 - INFO - ==== Verarbeite Dokument ID: 302 ====
+2026-01-14 21:47:59,855 - INFO - Checkpoint saved for document ID 302
+2026-01-14 21:47:59,855 - INFO - ==== Verarbeitung von Dokument ID: 302 abgeschlossen ====
+2026-01-14 21:47:59,855 - INFO - ==== Verarbeite Dokument ID: 303 ====
+2026-01-14 21:47:59,905 - INFO - Checkpoint saved for document ID 303
+2026-01-14 21:47:59,905 - INFO - ==== Verarbeitung von Dokument ID: 303 abgeschlossen ====
+2026-01-14 21:47:59,906 - INFO - State cleared - all processed documents have been removed
+2026-01-14 21:47:59,906 - INFO - ==== Verarbeite Dokument ID: 301 ====
+2026-01-14 21:47:59,956 - INFO - Checkpoint saved for document ID 301
+2026-01-14 21:47:59,956 - INFO - ==== Verarbeitung von Dokument ID: 301 abgeschlossen ====
+2026-01-14 21:47:59,956 - INFO - ==== Verarbeite Dokument ID: 302 ====
+2026-01-14 21:48:00,006 - INFO - Checkpoint saved for document ID 302
+2026-01-14 21:48:00,006 - INFO - ==== Verarbeitung von Dokument ID: 302 abgeschlossen ====
+2026-01-14 21:48:00,006 - INFO - ==== Verarbeite Dokument ID: 303 ====
+2026-01-14 21:48:00,057 - INFO - Checkpoint saved for document ID 303
+2026-01-14 21:48:00,057 - INFO - ==== Verarbeitung von Dokument ID: 303 abgeschlossen ====
