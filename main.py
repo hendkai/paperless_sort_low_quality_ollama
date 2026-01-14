@@ -416,6 +416,96 @@ def update_document_title(api_url: str, api_token: str, document_id: int, new_ti
         print(f"❌ Fehler bei der Umbenennung von Dokument {document_id}: {e}")
         raise
 
+def preview_sample_documents(documents: list, api_url: str, api_token: str) -> list:
+    """
+    Process a sample of documents to preview quality assessments.
+    Does not tag or rename documents - only evaluates and returns results.
+    """
+    session = requests.Session()
+    csrf_token = get_csrf_token(session, api_url, api_token)
+    services = []
+    if NUM_LLM_MODELS >= 1:
+        services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, MODEL_NAME))
+    if NUM_LLM_MODELS >= 2:
+        services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, SECOND_MODEL_NAME))
+    if NUM_LLM_MODELS >= 3:
+        services.append(OllamaService(OLLAMA_URL, OLLAMA_ENDPOINT, THIRD_MODEL_NAME))
+    ensemble_service = EnsembleOllamaService(services)
+
+    # Take sample of documents
+    sample_documents = documents[:PREVIEW_SAMPLE_COUNT]
+    total_documents = len(sample_documents)
+    processed_count = 0
+
+    logger.info(f"Starting preview of {total_documents} sample documents...")
+    print(f"{Fore.CYAN}🤖 Preview mode: Processing {total_documents} sample documents...{Style.RESET_ALL}")
+
+    preview_results = []
+
+    for document in sample_documents:
+        content = document.get('content', '')
+        document_id = document['id']
+
+        # Progress display
+        processed_count += 1
+        print(f"{Fore.CYAN}🤖 Previewing document {processed_count}/{total_documents} (ID: {document_id}){Style.RESET_ALL}")
+
+        try:
+            logger.info(f"==== Previewing document ID: {document_id} ====")
+            logger.info(f"Current title: '{document.get('title', 'No title')}'")
+            logger.info(f"Content length: {len(content)} characters")
+
+            # Evaluate quality (without tagging)
+            quality_response, consensus_reached = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document_id)
+            logger.info(f"Quality assessment for document ID {document_id}: {quality_response}")
+            logger.info(f"Consensus reached: {consensus_reached}")
+
+            # Build result dictionary
+            result = {
+                'document_id': document_id,
+                'title': document.get('title', 'No title'),
+                'content_length': len(content),
+                'quality_assessment': quality_response,
+                'consensus_reached': consensus_reached,
+                'existing_tags': document.get('tags', [])
+            }
+
+            preview_results.append(result)
+
+            if consensus_reached:
+                if quality_response.lower() == 'low quality':
+                    print(f"{Fore.YELLOW}⚠️  Would be tagged as: LOW QUALITY{Style.RESET_ALL}")
+                elif quality_response.lower() == 'high quality':
+                    print(f"{Fore.GREEN}✅ Would be tagged as: HIGH QUALITY{Style.RESET_ALL}")
+                    if RENAME_DOCUMENTS:
+                        print(f"{Fore.CYAN}   Would be renamed based on content{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}⚠️  No consensus reached - would be skipped{Style.RESET_ALL}")
+
+            logger.info(f"==== Preview of document ID: {document_id} completed ====\n")
+
+        except Exception as e:
+            logger.error(f"Error previewing document {document_id}: {e}")
+            print(f"{Fore.RED}❌ Error previewing document {document_id}: {str(e)[:100]}...{Style.RESET_ALL}")
+
+            # Add error result
+            preview_results.append({
+                'document_id': document_id,
+                'title': document.get('title', 'No title'),
+                'content_length': len(content),
+                'quality_assessment': 'ERROR',
+                'consensus_reached': False,
+                'existing_tags': document.get('tags', []),
+                'error': str(e)
+            })
+
+        # Clear visual separation between documents
+        print(f"{Fore.YELLOW}{'=' * 80}{Style.RESET_ALL}\n")
+        time.sleep(1)
+
+    print(f"{Fore.GREEN}🤖 Preview completed!{Style.RESET_ALL}")
+    return preview_results
+
 def main() -> None:
     print(f"{Fore.CYAN}🤖 Welcome to the Document Quality Analyzer!{Style.RESET_ALL}")
     logger.info("Searching for documents with content...")
