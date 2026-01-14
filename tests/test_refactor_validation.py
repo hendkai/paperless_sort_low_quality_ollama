@@ -66,9 +66,9 @@ class TestModuleSizes:
 
     def test_main_new_under_200_lines(self):
         """Verify new main.py is under 200 lines."""
-        main_path = Path("main_new.py")
+        main_path = Path("main.py")
         line_count = len(main_path.read_text().splitlines())
-        assert line_count < 200, f"main_new.py has {line_count} lines (should be < 200)"
+        assert line_count < 200, f"main.py has {line_count} lines (should be < 200)"
 
 
 class TestImportsWork:
