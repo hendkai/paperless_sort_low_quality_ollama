@@ -858,8 +858,8 @@ def preview_interactive_menu(documents: list, api_url: str, api_token: str) -> b
 
             if choice == '1':
                 # Proceed to bulk processing
-                confirm = input(f"{Fore.YELLOW}Are you sure you want to process all {MAX_DOCUMENTS} documents? (yes/no): {Style.RESET_ALL}").strip().lower()
-                if confirm in ['yes', 'y']:
+                preview_confirm = input(f"{Fore.YELLOW}Are you sure you want to process all {MAX_DOCUMENTS} documents? (yes/no): {Style.RESET_ALL}").strip().lower()
+                if preview_confirm in ['yes', 'y']:
                     print(f"{Fore.GREEN}✅ Proceeding to bulk processing...{Style.RESET_ALL}\n")
                     return True
                 else:
