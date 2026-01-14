@@ -985,14 +985,60 @@ def main() -> None:
             logger.info(f"Document ID: {doc['id']}, Title: {doc['title']}")
 
         ignore_already_tagged = os.getenv("IGNORE_ALREADY_TAGGED", "yes").lower() == 'yes'
-        confirm = os.getenv("CONFIRM_PROCESS", "yes").lower()
+        proceed_to_bulk = False
 
-        if confirm == "yes":
-            print(f"{Fore.CYAN}🤖 Starting processing...{Style.RESET_ALL}")
+        # Check if preview mode is enabled via environment variable
+        if PREVIEW_MODE:
+            print(f"{Fore.CYAN}🔍 Preview mode enabled by configuration.{Style.RESET_ALL}")
+            proceed_to_bulk = preview_interactive_menu(documents, API_URL, API_TOKEN)
+        else:
+            # Offer interactive preview mode choice
+            print(f"\n{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}📋 PROCESSING OPTIONS{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}1.{Style.RESET_ALL} Preview sample documents before bulk processing")
+            print(f"{Fore.YELLOW}2.{Style.RESET_ALL} Skip preview and process all documents directly")
+            print(f"{Fore.RED}3.{Style.RESET_ALL} Exit without processing")
+            print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
+
+            try:
+                choice = input(f"\n{Fore.CYAN}Enter your choice (1-3): {Style.RESET_ALL}").strip()
+
+                if choice == '1':
+                    # Run preview mode
+                    proceed_to_bulk = preview_interactive_menu(documents, API_URL, API_TOKEN)
+                elif choice == '2':
+                    # Skip preview and proceed directly
+                    confirm_skip = input(f"{Fore.YELLOW}Are you sure you want to process all {len(documents)} documents without preview? (yes/no): {Style.RESET_ALL}").strip().lower()
+                    if confirm_skip in ['yes', 'y']:
+                        proceed_to_bulk = True
+                    else:
+                        print(f"{Fore.YELLOW}⚠️  Returning to menu...{Style.RESET_ALL}\n")
+                        # Recursively offer options again
+                        main()
+                        return
+                elif choice == '3':
+                    # Exit without processing
+                    print(f"{Fore.RED}👋 Exiting without processing.{Style.RESET_ALL}\n")
+                    return
+                else:
+                    print(f"{Fore.RED}❌ Invalid choice. Please enter 1, 2, or 3.{Style.RESET_ALL}")
+                    # Recursively offer options again
+                    main()
+                    return
+
+            except KeyboardInterrupt:
+                print(f"\n\n{Fore.YELLOW}⚠️  Interrupted by user.{Style.RESET_ALL}")
+                print(f"{Fore.RED}👋 Exiting without processing.{Style.RESET_ALL}\n")
+                return
+
+        # Process documents if user confirmed
+        if proceed_to_bulk:
+            print(f"{Fore.CYAN}🤖 Starting bulk processing...{Style.RESET_ALL}")
             process_documents(documents, API_URL, API_TOKEN, ignore_already_tagged)
             print(f"{Fore.GREEN}🤖 Processing completed!{Style.RESET_ALL}")
         else:
-            print(f"{Fore.RED}🤖 Processing aborted.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}🤖 Processing cancelled by user.{Style.RESET_ALL}")
     else:
         print(f"{Fore.YELLOW}🤖 No documents with content found.{Style.RESET_ALL}")
 
