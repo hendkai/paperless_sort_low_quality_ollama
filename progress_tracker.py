@@ -110,3 +110,35 @@ class ProgressTracker:
         self.state['documents'].append(document_entry)
         self._save_state()
         logger.info(f"Checkpoint saved for document ID {document_id}")
+
+    def is_processed(self, document_id: int) -> bool:
+        """
+        Check if a document has already been processed.
+
+        Args:
+            document_id: The ID of the document to check
+
+        Returns:
+            True if the document has been processed, False otherwise
+        """
+        for doc in self.state['documents']:
+            if doc['document_id'] == document_id:
+                return True
+        return False
+
+    def load_checkpoint(self, document_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Load checkpoint data for a specific document.
+
+        Args:
+            document_id: The ID of the document to load
+
+        Returns:
+            Dictionary containing the checkpoint data if found, None otherwise
+        """
+        for doc in self.state['documents']:
+            if doc['document_id'] == document_id:
+                logger.debug(f"Checkpoint loaded for document ID {document_id}")
+                return doc
+        logger.debug(f"No checkpoint found for document ID {document_id}")
+        return None
