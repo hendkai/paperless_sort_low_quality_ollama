@@ -515,6 +515,126 @@ class GPTProvider(BaseLLMProvider):
             return ''
 
 
+class ClaudeCodeProvider(BaseLLMProvider):
+    """
+    Claude Code (MCP) provider implementation.
+
+    This provider interfaces with Claude's Model Context Protocol (MCP)
+    for AI-assisted code and document analysis. It uses the Anthropic Claude API
+    with configuration optimized for Claude Code integrations.
+    """
+
+    def __init__(self, api_key: str, model: str, url: Optional[str] = None) -> None:
+        """
+        Initialize the Claude Code provider.
+
+        Args:
+            api_key: The API key for Anthropic Claude
+            model: The model name to use (e.g., claude-3-5-sonnet-20241022, claude-3-haiku-20240307)
+            url: Optional custom URL endpoint (defaults to https://api.anthropic.com/v1/messages)
+        """
+        super().__init__(model=model, url=url or "https://api.anthropic.com/v1/messages")
+        self.api_key = api_key
+        self.headers = {
+            "x-api-key": api_key,
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01"
+        }
+
+    def evaluate_content(self, content: str, prompt: str, document_id: int) -> str:
+        """
+        Evaluate document content using Claude Code and return quality assessment.
+
+        Args:
+            content: The document content to evaluate
+            prompt: The prompt to use for evaluation
+            document_id: The document ID for logging/tracking
+
+        Returns:
+            Quality assessment string ("low quality", "high quality", or empty string on error)
+        """
+        payload = {
+            "model": self.model,
+            "max_tokens": 100,
+            "messages": [
+                {"role": "user", "content": f"{prompt}{content}"}
+            ],
+            "temperature": 0.3
+        }
+
+        try:
+            response = requests.post(self.url, json=payload, headers=self.headers, timeout=60)
+            response.raise_for_status()
+            response_data = response.json()
+
+            # Extract content from Claude Code response
+            if 'content' in response_data and len(response_data['content']) > 0:
+                full_response = response_data['content'][0]['text'].strip()
+
+                # Check for quality assessment in response
+                if "high quality" in full_response.lower():
+                    return "high quality"
+                elif "low quality" in full_response.lower():
+                    return "low quality"
+                else:
+                    return ''
+            else:
+                self.logger.error(f"Unexpected response format from Claude Code for document ID {document_id}")
+                return ''
+
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error sending request to Claude Code for document ID {document_id}: {e}")
+            return ''
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            self.logger.error(f"Error parsing Claude Code response for document ID {document_id}: {e}")
+            return ''
+
+    def generate_title(self, prompt: str, content: str) -> str:
+        """
+        Generate a title for the document content using Claude Code.
+
+        Args:
+            prompt: The prompt to use for title generation
+            content: The document content to base the title on
+
+        Returns:
+            Generated title string
+        """
+        payload = {
+            "model": self.model,
+            "max_tokens": 50,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7
+        }
+
+        try:
+            response = requests.post(self.url, json=payload, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            response_data = response.json()
+
+            # Extract title from Claude Code response
+            if 'content' in response_data and len(response_data['content']) > 0:
+                title = response_data['content'][0]['text'].strip()
+
+                # Clean the response from quotes or other formatting
+                title = title.replace('"', '').replace("'", '').replace('**', '')
+
+                self.logger.info(f"Claude Code hat folgenden Titel generiert: '{title}'")
+                return title
+            else:
+                self.logger.error("Unexpected response format from Claude Code for title generation")
+                return ''
+
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error sending request to Claude Code for title generation: {e}")
+            return ''
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            self.logger.error(f"Error parsing Claude Code response for title generation: {e}")
+            return ''
+
+
 class EnsembleLLMService:
     """
     Ensemble LLM service that combines multiple LLM providers for consensus-based evaluation.
