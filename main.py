@@ -11,6 +11,7 @@ from typing import Optional
 import sys
 import time
 from colorama import init, Fore, Style
+from llm_providers import OllamaService
 
 # Initialize Colorama
 init()
@@ -58,65 +59,6 @@ def show_robot_animation():
         sys.stdout.write('\r' + frame)
         sys.stdout.flush()
         time.sleep(0.2)
-
-class OllamaService:
-    def __init__(self, url: str, endpoint: str, model: str) -> None:
-        self.url = url
-        self.endpoint = endpoint
-        self.model = model
-
-    def evaluate_content(self, content: str, prompt: str, document_id: int) -> str:
-        payload = {"model": self.model, "prompt": f"{prompt}{content}"}
-        try: 
-            response = requests.post(f"{self.url}{self.endpoint}", json=payload)
-            response.raise_for_status()
-            responses = response.text.strip().split("\n")
-            full_response = ""
-            for res in responses:
-                try:
-                    res_json = json.loads(res)
-                    if 'response' in res_json:
-                        full_response += res_json['response']
-                except json.JSONDecodeError as e:
-                    logger.error(f"Error decoding JSON object for document ID {document_id}: {e}")
-                    logger.error(f"Response text: {res}")
-            if "high quality" in full_response.lower():
-                return "high quality"
-            elif "low quality" in full_response.lower():
-                return "low quality"
-            else:
-                return ''
-        except requests.exceptions.RequestException as e:
-            if response.status_code == 404:
-                logger.error(f"404 Client Error: Not Found for document ID {document_id}: {e}")
-                return '404 Client Error: Not Found'
-            else:
-                logger.error(f"Error sending request to Ollama for document ID {document_id}: {e}")
-                return ''
-
-    def generate_title(self, prompt: str, content_for_id: str) -> str:
-        payload = {"model": self.model, "prompt": prompt}
-        try: 
-            response = requests.post(f"{self.url}{self.endpoint}", json=payload)
-            response.raise_for_status()
-            responses = response.text.strip().split("\n")
-            full_response = ""
-            for res in responses:
-                try:
-                    res_json = json.loads(res)
-                    if 'response' in res_json:
-                        full_response += res_json['response']
-                except json.JSONDecodeError as e:
-                    logger.error(f"Error decoding JSON object for title generation: {e}")
-                    logger.error(f"Response text: {res}")
-            
-            # Bereinige die Antwort von Anführungszeichen oder anderen Formatierungen
-            title = full_response.strip().replace('"', '').replace("'", '')
-            logger.info(f"LLM hat folgenden Titel generiert: '{title}'")
-            return title
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error sending request to Ollama for title generation: {e}")
-            return ''
 
 class EnsembleOllamaService:
     def __init__(self, services: list) -> None:
