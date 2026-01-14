@@ -11,6 +11,7 @@ from typing import Optional
 import sys
 import time
 from colorama import init, Fore, Style
+from progress_tracker import ProgressTracker
 
 # Initialize Colorama
 init()
@@ -30,6 +31,7 @@ MAX_DOCUMENTS = int(os.getenv("MAX_DOCUMENTS"))
 NUM_LLM_MODELS = int(os.getenv("NUM_LLM_MODELS", 3))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 RENAME_DOCUMENTS = os.getenv("RENAME_DOCUMENTS", "no").lower() == 'yes'
+PROGRESS_STATE_FILE = os.getenv("PROGRESS_STATE_FILE", "progress_state.json")
 
 PROMPT_DEFINITION = """
 Please review the following document content and determine if it is of low quality or high quality.
@@ -46,6 +48,9 @@ Content:
 # Configure logging
 logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Initialize progress tracker
+progress_tracker = ProgressTracker(PROGRESS_STATE_FILE)
 
 def show_robot_animation():
     frames = [
