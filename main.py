@@ -124,35 +124,69 @@ class EnsembleOllamaService:
     def __init__(self, services: list) -> None:
         self.services = services
 
-    def evaluate_content(self, content: str, prompt: str, document_id: int) -> str:
-        results = []
+    def evaluate_content(self, content: str, prompt: str, document_id: int) -> dict:
+        """
+        Evaluate content using multiple models and return detailed results.
+
+        Returns:
+            dict: Contains:
+                - consensus_result: The final quality assessment (e.g., 'high quality', 'low quality')
+                - consensus_reached: Boolean indicating if models agreed
+                - confidence: Float from 0.0 to 1.0 indicating agreement level
+                - individual_results: List of dicts with 'model' and 'result' keys
+        """
+        individual_results = []
         for service in self.services:
             result = service.evaluate_content(content, prompt, document_id)
             logger.info(f"Model {service.model} result for document ID {document_id}: {result}")
             if result:
-                results.append(result)
-        
-        consensus_result, consensus_reached = self.consensus_logic(results)
-        return consensus_result, consensus_reached
+                individual_results.append({'model': service.model, 'result': result})
 
-    def consensus_logic(self, results: list) -> tuple:
-        if not results:
+        consensus_result, consensus_reached = self.consensus_logic(individual_results)
+        confidence = self._calculate_confidence(individual_results, consensus_result, consensus_reached)
+
+        return {
+            'consensus_result': consensus_result,
+            'consensus_reached': consensus_reached,
+            'confidence': confidence,
+            'individual_results': individual_results
+        }
+
+    def consensus_logic(self, individual_results: list) -> tuple:
+        """Determine consensus from individual model results."""
+        if not individual_results:
             return '', False
-        
+
         result_count = {}
-        for result in results:
+        for item in individual_results:
+            result = item['result']
             if result in result_count:
                 result_count[result] += 1
             else:
                 result_count[result] = 1
-        
+
         max_count = max(result_count.values())
         majority_results = [result for result, count in result_count.items() if count == max_count]
-        
+
         if len(majority_results) == 1:
             return majority_results[0], True
         else:
             return '', False
+
+    def _calculate_confidence(self, individual_results: list, consensus_result: str, consensus_reached: bool) -> float:
+        """Calculate confidence score based on model agreement."""
+        if not individual_results or not consensus_reached:
+            return 0.0
+
+        total_models = len(individual_results)
+        if total_models == 0:
+            return 0.0
+
+        # Count how many models agreed with the consensus
+        agreement_count = sum(1 for item in individual_results if item['result'] == consensus_result)
+
+        # Confidence is the ratio of agreement to total models
+        return round(agreement_count / total_models, 2)
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 def fetch_documents_with_content(api_url: str, api_token: str, max_documents: int) -> list:
@@ -254,10 +288,17 @@ def process_single_document(document: dict, content: str, ensemble_service: Ense
     logger.info(f"==== Verarbeite Dokument ID: {document_id} ====")
     logger.info(f"Aktueller Titel: '{document.get('title', 'Kein Titel')}'")
     logger.info(f"Inhaltslänge: {len(content)} Zeichen")
-    
-    quality_response, consensus_reached = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document_id)
+
+    evaluation = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document_id)
+    quality_response = evaluation['consensus_result']
+    consensus_reached = evaluation['consensus_reached']
+    confidence = evaluation['confidence']
+    individual_results = evaluation['individual_results']
+
     logger.info(f"Ollama Qualitätsbewertung für Dokument ID {document_id}: {quality_response}")
-    logger.info(f"Konsensus erreicht: {consensus_reached}")
+    logger.info(f"Konsens erreicht: {consensus_reached}")
+    logger.info(f"Konfidenz: {confidence}")
+    logger.info(f"Individuelle Modellergebnisse: {individual_results}")
 
     if consensus_reached:
         if quality_response.lower() == 'low quality':
@@ -456,9 +497,16 @@ def preview_sample_documents(documents: list, api_url: str, api_token: str) -> l
             logger.info(f"Content length: {len(content)} characters")
 
             # Evaluate quality (without tagging)
-            quality_response, consensus_reached = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document_id)
+            evaluation = ensemble_service.evaluate_content(content, PROMPT_DEFINITION, document_id)
+            quality_response = evaluation['consensus_result']
+            consensus_reached = evaluation['consensus_reached']
+            confidence = evaluation['confidence']
+            individual_results = evaluation['individual_results']
+
             logger.info(f"Quality assessment for document ID {document_id}: {quality_response}")
             logger.info(f"Consensus reached: {consensus_reached}")
+            logger.info(f"Confidence: {confidence}")
+            logger.info(f"Individual model results: {individual_results}")
 
             # Build result dictionary
             result = {
@@ -467,6 +515,8 @@ def preview_sample_documents(documents: list, api_url: str, api_token: str) -> l
                 'content_length': len(content),
                 'quality_assessment': quality_response,
                 'consensus_reached': consensus_reached,
+                'confidence': confidence,
+                'individual_results': individual_results,
                 'existing_tags': document.get('tags', [])
             }
 
