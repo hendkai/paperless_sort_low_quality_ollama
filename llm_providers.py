@@ -397,6 +397,124 @@ class ClaudeAPIProvider(BaseLLMProvider):
             return ''
 
 
+class GPTProvider(BaseLLMProvider):
+    """
+    GPT (OpenAI) API provider implementation.
+
+    This provider interfaces with OpenAI's GPT API to evaluate
+    document content and generate titles.
+    """
+
+    def __init__(self, api_key: str, model: str, url: Optional[str] = None) -> None:
+        """
+        Initialize the GPT provider.
+
+        Args:
+            api_key: The API key for OpenAI
+            model: The model name to use (e.g., gpt-4, gpt-3.5-turbo, gpt-4o)
+            url: Optional custom URL endpoint (defaults to https://api.openai.com/v1/chat/completions)
+        """
+        super().__init__(model=model, url=url or "https://api.openai.com/v1/chat/completions")
+        self.api_key = api_key
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+    def evaluate_content(self, content: str, prompt: str, document_id: int) -> str:
+        """
+        Evaluate document content using GPT and return quality assessment.
+
+        Args:
+            content: The document content to evaluate
+            prompt: The prompt to use for evaluation
+            document_id: The document ID for logging/tracking
+
+        Returns:
+            Quality assessment string ("low quality", "high quality", or empty string on error)
+        """
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "user", "content": f"{prompt}{content}"}
+            ],
+            "temperature": 0.3,
+            "max_tokens": 100
+        }
+
+        try:
+            response = requests.post(self.url, json=payload, headers=self.headers, timeout=60)
+            response.raise_for_status()
+            response_data = response.json()
+
+            # Extract content from GPT response
+            if 'choices' in response_data and len(response_data['choices']) > 0:
+                full_response = response_data['choices'][0]['message']['content'].strip()
+
+                # Check for quality assessment in response
+                if "high quality" in full_response.lower():
+                    return "high quality"
+                elif "low quality" in full_response.lower():
+                    return "low quality"
+                else:
+                    return ''
+            else:
+                self.logger.error(f"Unexpected response format from GPT for document ID {document_id}")
+                return ''
+
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error sending request to GPT for document ID {document_id}: {e}")
+            return ''
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            self.logger.error(f"Error parsing GPT response for document ID {document_id}: {e}")
+            return ''
+
+    def generate_title(self, prompt: str, content: str) -> str:
+        """
+        Generate a title for the document content using GPT.
+
+        Args:
+            prompt: The prompt to use for title generation
+            content: The document content to base the title on
+
+        Returns:
+            Generated title string
+        """
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 50
+        }
+
+        try:
+            response = requests.post(self.url, json=payload, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            response_data = response.json()
+
+            # Extract title from GPT response
+            if 'choices' in response_data and len(response_data['choices']) > 0:
+                title = response_data['choices'][0]['message']['content'].strip()
+
+                # Clean the response from quotes or other formatting
+                title = title.replace('"', '').replace("'", '').replace('**', '')
+
+                self.logger.info(f"GPT hat folgenden Titel generiert: '{title}'")
+                return title
+            else:
+                self.logger.error("Unexpected response format from GPT for title generation")
+                return ''
+
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error sending request to GPT for title generation: {e}")
+            return ''
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            self.logger.error(f"Error parsing GPT response for title generation: {e}")
+            return ''
+
+
 class EnsembleLLMService:
     """
     Ensemble LLM service that combines multiple LLM providers for consensus-based evaluation.
