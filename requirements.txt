@@ -3,6 +3,5 @@ tqdm
 python-dotenv
 tenacity
 colorama
-concurrent.futures
 pytest
 pytest-mock
