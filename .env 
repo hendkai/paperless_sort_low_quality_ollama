@@ -1,0 +1,58 @@
+# Complete URL to your Paperless-ngx API
+# Example: http://192.168.2.10:8000/api
+API_URL=http://192.168.178.57:8000/api
+
+# Your Paperless-ngx API Token
+# Can be found in: Paperless web interface -> Settings -> API Token
+API_TOKEN=8804e0dff11bf5533bdc724c15c482e2315aaafc
+
+# URL to your Ollama server
+# Default port is 11434
+OLLAMA_URL=http://localhost:11434
+
+# Endpoint for Ollama API requests
+# Default is /api/generate for text generation
+OLLAMA_ENDPOINT=/api/generate
+
+# Name of the AI model to use
+# Available models can be listed using 'ollama list'
+MODEL_NAME=llama3.2
+
+# Name of the second AI model to use
+# Available models can be listed using 'ollama list'
+SECOND_MODEL_NAME=mistral
+
+# Name of the third AI model to use
+# Available models can be listed using 'ollama list'
+THIRD_MODEL_NAME=dolphin mixtral
+
+# Number of LLM models to use
+NUM_LLM_MODELS=1
+
+# Tag ID for low quality documents in Paperless-ngx
+# Find the ID in Paperless interface under Tags
+LOW_QUALITY_TAG_ID=91
+
+# Tag ID for high quality documents in Paperless-ngx
+# Find the ID in Paperless interface under Tags
+HIGH_QUALITY_TAG_ID=92
+
+# Maximum number of documents to process
+# Set to 0 for unlimited
+MAX_DOCUMENTS=10000
+
+# Whether to ignore already tagged documents
+# Possible values: yes/no
+IGNORE_ALREADY_TAGGED=yes
+
+# Whether to require confirmation before processing
+# Possible values: yes/no
+CONFIRM_PROCESS=yes
+
+# Logging level
+# Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_LEVEL=INFO
+
+# Whether to rename document titles based on their content
+# Possible values: yes/no
+RENAME_DOCUMENTS=yes

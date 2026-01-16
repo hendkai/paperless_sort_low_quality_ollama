@@ -244,18 +244,19 @@ Respond with ONLY 'high quality' or 'low quality', nothing else."""
 
 def generate_title(content: str, model: str) -> Optional[str]:
     """Generate improved title for high-quality document"""
-    prompt = f"""Generate a short filename for this document.
+    prompt = f"""Output ONLY a filename, nothing else. No explanations.
 
-Rules:
-- Max 60 characters
-- German if content is German
-- Format: Category_Subject_Date (e.g. Rechnung_Amazon_2024-01-15)
-- NO explanations, NO thinking, just output the title directly
+Example outputs:
+Rechnung_Amazon_2024-01-15
+Vertrag_Telekom_2024-03
+Brief_Finanzamt_Steuerbescheid
 
-Document:
-{content[:2000]}
+Rules: Max 60 chars, German if content German, Format: Category_Subject_Date
 
-Title:"""
+Document excerpt:
+{content[:1500]}
+
+Filename:"""
 
     try:
         # Detect API format based on endpoint
@@ -266,7 +267,7 @@ Title:"""
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
-                "max_tokens": 500  # Higher for reasoning models
+                "max_tokens": 4000  # Very high for reasoning models that think extensively
             }
         else:
             payload = {
@@ -275,7 +276,7 @@ Title:"""
                 "stream": False,
                 "options": {
                     "temperature": 0.3,
-                    "num_predict": 500  # Higher for reasoning models
+                    "num_predict": 4000  # Very high for reasoning models
                 }
             }
 
@@ -292,8 +293,13 @@ Title:"""
         else:
             result = data.get("response", "").strip()
 
+        # Debug: Log raw response before cleaning
+        add_log(f"[Debug] Raw title response (first 200 chars): '{result[:200]}'")
+
         # Remove thinking/reasoning blocks from reasoning models
         import re
+        raw_for_fallback = result  # Keep original for fallback extraction
+
         result = re.sub(r'\[think\].*?\[/think\]', '', result, flags=re.DOTALL | re.IGNORECASE)
         result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL | re.IGNORECASE)
         result = re.sub(r'<reasoning>.*?</reasoning>', '', result, flags=re.DOTALL | re.IGNORECASE)
@@ -303,7 +309,22 @@ Title:"""
 
         # Clean up: remove quotes and whitespace
         result = result.strip('"\'').strip()
-        add_log(f"[Debug] Generated title: '{result[:60]}'")
+
+        # Fallback: Try to extract filename from thinking block if result is empty
+        if not result and raw_for_fallback:
+            # Look for patterns like "Filename:" or filename patterns in the thinking
+            filename_match = re.search(r'(?:filename|title|name):\s*["\']?([A-Za-z0-9äöüÄÖÜß_\-]+(?:_[A-Za-z0-9äöüÄÖÜß_\-]+)*)["\']?', raw_for_fallback, re.IGNORECASE)
+            if filename_match:
+                result = filename_match.group(1).strip('"\'').strip()
+                add_log(f"[Debug] Extracted title from thinking: '{result[:60]}'")
+            else:
+                # Try to find any underscore-separated pattern that looks like a filename
+                fallback_match = re.search(r'\b([A-Z][a-zA-Z0-9äöüÄÖÜß]+_[A-Za-z0-9äöüÄÖÜß_\-]+)\b', raw_for_fallback)
+                if fallback_match:
+                    result = fallback_match.group(1)
+                    add_log(f"[Debug] Found filename pattern in thinking: '{result[:60]}'")
+
+        add_log(f"[Debug] Generated title: '{result[:60] if result else ''}'")
         return result if result else None
     except Exception as e:
         add_log(f"[Error] Title generation failed: {e}")

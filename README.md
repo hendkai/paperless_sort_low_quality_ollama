@@ -4,7 +4,11 @@ This script is designed to fetch and analyze documents from a Paperless server, 
 
 ## ✨ Features
 
+
 - 📥 **Fetch Documents**: Retrieve documents from a Paperless server based on a customizable search query.
+
+![Paperless AI GUI](images/gui_preview.png)
+
 - 🔍 **Analyze Content**: Utilize Ollama to assess the quality of document content.
 - 🏷️ **Tag Documents**: Automatically tag documents as low or high quality based on the analysis results.
 - ⚙️ **Configurable Settings**: User-configurable server URLs for both Paperless and Ollama, allowing for seamless integration with your environment.
