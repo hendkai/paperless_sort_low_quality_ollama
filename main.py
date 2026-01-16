@@ -1,6 +1,7 @@
 import requests
 import os
 import json
+import re
 from datetime import datetime
 from tqdm import tqdm
 from dotenv import load_dotenv
@@ -66,57 +67,120 @@ class OllamaService:
         self.model = model
 
     def evaluate_content(self, content: str, prompt: str, document_id: int) -> str:
-        payload = {"model": self.model, "prompt": f"{prompt}{content}"}
-        try: 
-            response = requests.post(f"{self.url}{self.endpoint}", json=payload)
-            response.raise_for_status()
-            responses = response.text.strip().split("\n")
-            full_response = ""
-            for res in responses:
-                try:
-                    res_json = json.loads(res)
-                    if 'response' in res_json:
-                        full_response += res_json['response']
-                except json.JSONDecodeError as e:
-                    logger.error(f"Error decoding JSON object for document ID {document_id}: {e}")
-                    logger.error(f"Response text: {res}")
-            if "high quality" in full_response.lower():
-                return "high quality"
-            elif "low quality" in full_response.lower():
-                return "low quality"
-            else:
+        # Truncate content to avoid API errors with long documents
+        max_content_length = 4000
+        if len(content) > max_content_length:
+            content = content[:max_content_length]
+            logger.info(f"Content truncated to {max_content_length} chars for document ID {document_id}")
+
+        if "/v1/" in self.endpoint:
+            # OpenAI API format (LM Studio)
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "user", "content": f"{prompt}{content}"}
+                ],
+                "temperature": 0.0
+            }
+            try:
+                response = requests.post(f"{self.url}{self.endpoint}", json=payload)
+                response.raise_for_status()
+                res_json = response.json()
+                full_response = res_json.get('choices', [{}])[0].get('message', {}).get('content', '') or ''
+                
+                if "high quality" in full_response.lower():
+                    return "high quality"
+                elif "low quality" in full_response.lower():
+                    return "low quality"
+                else:
+                    logger.warning(f"Unexpected response content from model {self.model}: '{full_response[:100]}...'")
+                    return ''
+            except Exception as e:
+                logger.error(f"Error sending request to LM Studio for document ID {document_id}: {e}")
                 return ''
-        except requests.exceptions.RequestException as e:
-            if response.status_code == 404:
-                logger.error(f"404 Client Error: Not Found for document ID {document_id}: {e}")
-                return '404 Client Error: Not Found'
-            else:
-                logger.error(f"Error sending request to Ollama for document ID {document_id}: {e}")
-                return ''
+        else:
+            # Native Ollama API format
+            payload = {"model": self.model, "prompt": f"{prompt}{content}"}
+            try: 
+                response = requests.post(f"{self.url}{self.endpoint}", json=payload)
+                response.raise_for_status()
+                responses = response.text.strip().split("\n")
+                full_response = ""
+                for res in responses:
+                    try:
+                        res_json = json.loads(res)
+                        if 'response' in res_json:
+                            full_response += res_json['response']
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Error decoding JSON object for document ID {document_id}: {e}")
+                        logger.error(f"Response text: {res}")
+                if "high quality" in full_response.lower():
+                    return "high quality"
+                elif "low quality" in full_response.lower():
+                    return "low quality"
+                else:
+                    # logger.warning(f"Unexpected response format from model {self.model}: '{full_response}'")
+                    return ''
+            except requests.exceptions.RequestException as e:
+                if response.status_code == 404:
+                    logger.error(f"404 Client Error: Not Found for document ID {document_id}: {e}")
+                    return '404 Client Error: Not Found'
+                else:
+                    logger.error(f"Error sending request to Ollama for document ID {document_id}: {e}")
+                    return ''
 
     def generate_title(self, prompt: str, content_for_id: str) -> str:
-        payload = {"model": self.model, "prompt": prompt}
-        try: 
-            response = requests.post(f"{self.url}{self.endpoint}", json=payload)
-            response.raise_for_status()
-            responses = response.text.strip().split("\n")
-            full_response = ""
-            for res in responses:
-                try:
-                    res_json = json.loads(res)
-                    if 'response' in res_json:
-                        full_response += res_json['response']
-                except json.JSONDecodeError as e:
-                    logger.error(f"Error decoding JSON object for title generation: {e}")
-                    logger.error(f"Response text: {res}")
-            
-            # Bereinige die Antwort von Anführungszeichen oder anderen Formatierungen
-            title = full_response.strip().replace('"', '').replace("'", '')
-            logger.info(f"LLM hat folgenden Titel generiert: '{title}'")
-            return title
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error sending request to Ollama for title generation: {e}")
-            return ''
+        if "/v1/" in self.endpoint:
+             # OpenAI API format (LM Studio)
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "user", "content": f"{prompt}\n\n{content_for_id}"}
+                ],
+                "temperature": 0.7
+            }
+            try:
+                response = requests.post(f"{self.url}{self.endpoint}", json=payload)
+                response.raise_for_status()
+                res_json = response.json()
+                title = res_json.get('choices', [{}])[0].get('message', {}).get('content', '') or ''
+
+                # Strip [THINK]...[/THINK] tags from reasoning models
+                title = re.sub(r'\[THINK\].*?\[/THINK\]', '', title, flags=re.DOTALL).strip()
+
+                # Bereinige die Antwort von Anführungszeichen oder anderen Formatierungen
+                title = title.strip().replace('"', '').replace("'", '')
+                logger.info(f"LLM hat folgenden Titel generiert: '{title}'")
+                return title
+            except Exception as e:
+                logger.error(f"Error sending request to LM Studio for title generation: {e}")
+                return ''
+        else:
+            # Native Ollama API format
+            payload = {"model": self.model, "prompt": prompt}
+            try: 
+                response = requests.post(f"{self.url}{self.endpoint}", json=payload)
+                response.raise_for_status()
+                responses = response.text.strip().split("\n")
+                full_response = ""
+                for res in responses:
+                    try:
+                        res_json = json.loads(res)
+                        if 'response' in res_json:
+                            full_response += res_json['response']
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Error decoding JSON object for title generation: {e}")
+                        logger.error(f"Response text: {res}")
+                
+                # Strip [THINK]...[/THINK] tags from reasoning models
+                title = re.sub(r'\[THINK\].*?\[/THINK\]', '', full_response, flags=re.DOTALL).strip()
+                # Bereinige die Antwort von Anführungszeichen oder anderen Formatierungen
+                title = title.replace('"', '').replace("'", '')
+                logger.info(f"LLM hat folgenden Titel generiert: '{title}'")
+                return title
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Error sending request to Ollama for title generation: {e}")
+                return ''
 
 class EnsembleOllamaService:
     def __init__(self, services: list) -> None:
@@ -193,18 +257,16 @@ def tag_document(document_id: int, api_url: str, api_token: str, tag_id: int, cs
         'X-CSRFToken': csrf_token,
         'Content-Type': 'application/json'
     }
-    url = f'{api_url}/documents/{document_id}/'
-    response = requests.get(url, headers=headers)
+    # Use bulk_edit API which is more reliable than PATCH
+    url = f'{api_url}/documents/bulk_edit/'
+    payload = {
+        "documents": [document_id],
+        "method": "modify_tags",
+        "parameters": {"add_tags": [tag_id], "remove_tags": []}
+    }
+    response = requests.post(url, json=payload, headers=headers)
+    logger.info(f"Tagging Response: {response.status_code} - {response.text}")
     response.raise_for_status()
-    existing_tags = response.json().get('tags', [])
-
-    if tag_id not in existing_tags:
-        payload = {"tags": existing_tags + [tag_id]}
-        response = requests.patch(url, json=payload, headers=headers)
-        logger.info(f"Tagging Response: {response.status_code} - {response.text}")
-        response.raise_for_status()
-    else:
-        logger.info(f"Document {document_id} already has the selected tag.")
 
 def process_documents(documents: list, api_url: str, api_token: str, ignore_already_tagged: bool) -> None:
     session = requests.Session()

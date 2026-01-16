@@ -3,4 +3,4 @@ tqdm
 python-dotenv
 tenacity
 colorama
-concurrent.futures
+textual>=0.40.0

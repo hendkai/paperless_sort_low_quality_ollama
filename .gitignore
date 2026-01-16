@@ -1,8 +1,51 @@
 # Environment variables
 .env
+.env.*
+!.env.example
+".env "
 
 # Virtual Environment
 .venv/
 venv/
 ENV/
 paperless_venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Log files
+*.log
+manual_log*.txt
+service_status.log
+
+# Auto-claude working directory
+.auto-claude/
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node modules (frontend)
+node_modules/
+gui/node_modules/
+
+# Build output
+gui/dist/
+gui/dist-electron/
+gui/release/
+dist/
+
+# History data (contains document titles)
+backend/history.json
+
+# Firebase
+firebase-debug.log
+.firebase/
+
+# Claude settings (may contain sensitive data)
+.claude_settings.json
+.auto-claude-security.json
